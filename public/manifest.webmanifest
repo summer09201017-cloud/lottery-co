@@ -1,0 +1,21 @@
+{
+  "name": "跑馬燈抽獎機",
+  "short_name": "抽獎機",
+  "description": "跑馬燈、轉盤、拉霸、抽卡盲盒四合一抽籤工具",
+  "id": "/",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "orientation": "any",
+  "categories": ["entertainment", "utilities"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
