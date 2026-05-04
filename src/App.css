@@ -1023,6 +1023,17 @@ select:focus {
   pointer-events: none;
   overflow: hidden;
   background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 28%, transparent), transparent);
+  animation: winnerBannerFade 1.7s forwards;
+}
+
+@keyframes winnerBannerFade {
+  0%, 82% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
 }
 
 .winner-banner-track {
