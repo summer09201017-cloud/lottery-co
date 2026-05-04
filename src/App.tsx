@@ -1,21 +1,18 @@
 import {
-  BarChart3,
   Check,
   CircleDot,
   Dice5,
   Download,
   Eraser,
+  FileImage,
   FileSpreadsheet,
   Gift,
   History,
+  ImagePlus,
   ListPlus,
   Maximize2,
-  Megaphone,
   MonitorUp,
-  Music,
-  Music2,
   PackageOpen,
-  Palette,
   Play,
   Plus,
   QrCode,
@@ -23,32 +20,41 @@ import {
   Share2,
   Shuffle,
   Sparkles,
-  Ticket,
-  Timer,
   Trash2,
   Trophy,
+  Undo2,
   Upload,
+  Users,
   Vibrate,
   Volume2,
   VolumeX,
-  X,
-  Zap
+  X
 } from 'lucide-react';
 import type { CSSProperties, ComponentType } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createId, cryptoRandomFloat, getPlayableItems, parseImportText, weightedPick } from './randomEngine';
-import { playTone, speak, startBgMusic, stopBgMusic, vibrate } from './fx';
+import {
+  compressImage,
+  createId,
+  cryptoRandomFloat,
+  getPlayableItems,
+  parseImportText,
+  weightedPickN
+} from './randomEngine';
+import { playCheer, playTone, vibrate } from './fx';
+import { generateQrSvg } from './qr';
 import { defaultSettings, loadState, saveState } from './storage';
-import type { AppSettings, DrawItem, DrawRecord, GameMode, PersistedState, ThemeName, WheelPalette } from './types';
+import type { AppSettings, DrawItem, DrawRecord, GameMode, PersistedState, ThemeName } from './types';
 
-const isDisplayOnly = new URLSearchParams(window.location.search).get('display') === '1';
+const urlParams = new URLSearchParams(window.location.search);
+const isDisplayOnly = urlParams.get('display') === '1';
+const isObsMode = urlParams.get('obs') === '1';
+const isCheerMode = urlParams.get('cheer') === '1';
 
 const modeOptions: Array<{ value: GameMode; label: string; Icon: ComponentType<{ size?: number }> }> = [
   { value: 'marquee', label: '跑馬燈', Icon: Sparkles },
   { value: 'wheel', label: '轉盤', Icon: CircleDot },
   { value: 'slot', label: '拉霸', Icon: Dice5 },
-  { value: 'gacha', label: '抽卡盲盒', Icon: Gift },
-  { value: 'card', label: '單抽卡牌', Icon: Ticket }
+  { value: 'gacha', label: '抽卡盲盒', Icon: Gift }
 ];
 
 const themeOptions: Array<{ value: ThemeName; label: string }> = [
@@ -58,37 +64,29 @@ const themeOptions: Array<{ value: ThemeName; label: string }> = [
   { value: 'future', label: '科技大螢幕' }
 ];
 
-const wheelPalettes: Record<WheelPalette, { label: string; colors: string[] }> = {
-  rainbow: {
-    label: '彩虹',
-    colors: ['#22d3ee', '#f97316', '#a3e635', '#ef4444', '#facc15', '#38bdf8', '#fb7185', '#34d399', '#c084fc', '#f59e0b']
-  },
-  warm: {
-    label: '暖色',
-    colors: ['#f97316', '#fb7185', '#facc15', '#ef4444', '#f59e0b', '#fb923c', '#fda4af', '#fde047']
-  },
-  cool: {
-    label: '冷色',
-    colors: ['#22d3ee', '#38bdf8', '#34d399', '#a3e635', '#c084fc', '#60a5fa', '#67e8f9', '#86efac']
-  },
-  mono: {
-    label: '單色',
-    colors: ['#1e293b', '#334155', '#475569', '#64748b', '#94a3b8', '#cbd5e1']
-  }
-};
-
-const wheelColors = wheelPalettes.rainbow.colors;
-
-const excitementLabels = ['', '冷靜', '輕快', '輕快', '正常', '正常', '熱烈', '熱烈', '狂熱', '狂熱', '極致'];
-
-const countdownOptions: Array<{ value: number; label: string }> = [
+const drawCountOptions = [1, 3, 5, 10];
+const countdownOptions = [
   { value: 0, label: '關閉' },
   { value: 3, label: '3 秒' },
-  { value: 5, label: '5 秒' },
-  { value: 10, label: '10 秒' }
+  { value: 5, label: '5 秒' }
+];
+
+const wheelColors = [
+  '#22d3ee',
+  '#f97316',
+  '#a3e635',
+  '#ef4444',
+  '#facc15',
+  '#38bdf8',
+  '#fb7185',
+  '#34d399',
+  '#c084fc',
+  '#f59e0b'
 ];
 
 type StatePayload = PersistedState;
+
+type ReelCell = { id: string | null; name: string; image?: string };
 
 type ChannelMessage =
   | { type: 'SYNC'; origin: string; state: StatePayload }
@@ -117,31 +115,27 @@ function App() {
   const [newName, setNewName] = useState('');
   const [newWeight, setNewWeight] = useState(1);
   const [importText, setImportText] = useState('');
-  const [winner, setWinner] = useState<DrawItem | null>(null);
   const [winners, setWinners] = useState<DrawItem[]>([]);
-  const [showWinnerOverlay, setShowWinnerOverlay] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [runPool, setRunPool] = useState<DrawItem[]>([]);
   const [marqueeIndex, setMarqueeIndex] = useState(0);
   const [wheelRotation, setWheelRotation] = useState(0);
   const [wheelMs, setWheelMs] = useState(4200);
-  const [slotReels, setSlotReels] = useState<string[][]>([]);
+  const [slotReels, setSlotReels] = useState<ReelCell[][]>([]);
   const [gachaCards, setGachaCards] = useState<DrawItem[]>([]);
   const [gachaRevealId, setGachaRevealId] = useState<string | null>(null);
   const [gachaShuffleKey, setGachaShuffleKey] = useState(0);
-  const [cardPhase, setCardPhase] = useState<'idle' | 'shaking' | 'flipping' | 'revealed'>('idle');
-  const [cardWinner, setCardWinner] = useState<DrawItem | null>(null);
   const [confettiKey, setConfettiKey] = useState(0);
+  const [bannerKey, setBannerKey] = useState(0);
+  const [bannerName, setBannerName] = useState('');
+  const [countdownRemaining, setCountdownRemaining] = useState<number | null>(null);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(
     () => window.matchMedia?.('(display-mode: standalone)').matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
   );
   const [notice, setNotice] = useState<string | null>(null);
   const [shareUrl, setShareUrl] = useState('');
-  const [countdownNumber, setCountdownNumber] = useState<number | null>(null);
-  const [showQrModal, setShowQrModal] = useState(false);
-  const [showStats, setShowStats] = useState(false);
-  const [liveAnnounce, setLiveAnnounce] = useState('');
+  const [qrModalUrl, setQrModalUrl] = useState<string | null>(null);
 
   const stateRef = useRef<StatePayload>({ items, history, settings });
   const timeoutsRef = useRef<number[]>([]);
@@ -152,18 +146,26 @@ function App() {
   const marqueeIndexRef = useRef(0);
   const wheelRotationRef = useRef(0);
   const noticeTimeoutRef = useRef<number | null>(null);
+  const countdownTimerRef = useRef<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const itemImageInputRef = useRef<HTMLInputElement | null>(null);
+  const itemImageTargetRef = useRef<string | null>(null);
 
   const cleanItems = useMemo(() => items.filter((item) => item.name.trim() && item.weight > 0), [items]);
   const playableItems = useMemo(() => getPlayableItems(items, settings.skipDrawn), [items, settings.skipDrawn]);
   const stageItems = runPool.length ? runPool : playableItems.length ? playableItems : cleanItems;
-  const stageNamesKey = stageItems.map((item) => `${item.id}:${item.name}`).join('|');
+  const stageNamesKey = stageItems.map((item) => `${item.id}:${item.name}:${item.image ? 'i' : ''}`).join('|');
   const totalWeight = playableItems.reduce((sum, item) => sum + item.weight, 0);
-  const activePalette = wheelPalettes[settings.wheelPalette ?? 'rainbow']?.colors ?? wheelColors;
+  const primaryWinner = winners[0] ?? null;
+  const editingDisabled = isDrawing || countdownRemaining !== null;
 
   useEffect(() => {
     stateRef.current = { items, history, settings };
     if (!isDisplayOnly) {
-      saveState(stateRef.current);
+      const result = saveState(stateRef.current);
+      if (!result.ok && result.error) {
+        showNotice(result.error);
+      }
       broadcast({ type: 'SYNC', state: stateRef.current });
     }
   }, [items, history, settings]);
@@ -181,15 +183,15 @@ function App() {
   }, [isDrawing]);
 
   useEffect(() => {
-    if (settings.mode !== 'slot' || !stageItems.length || isDrawing || winner) return;
-    setSlotReels(createReels(stageItems.map((item) => item.name)));
-  }, [settings.mode, isDrawing, stageNamesKey, winner]);
+    if (settings.mode !== 'slot' || !stageItems.length || isDrawing || winners.length) return;
+    setSlotReels(createReels(stageItems));
+  }, [settings.mode, isDrawing, stageNamesKey, winners.length]);
 
   useEffect(() => {
-    if (settings.mode !== 'gacha' || !stageItems.length || isDrawing || winner) return;
+    if (settings.mode !== 'gacha' || !stageItems.length || isDrawing || winners.length) return;
     setGachaCards(buildGachaDeck(stageItems, null));
     setGachaRevealId(null);
-  }, [settings.mode, isDrawing, stageNamesKey, winner]);
+  }, [settings.mode, isDrawing, stageNamesKey, winners.length]);
 
   useEffect(() => {
     const onBeforeInstallPrompt = (event: Event) => {
@@ -208,6 +210,18 @@ function App() {
       window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
       window.removeEventListener('appinstalled', onAppInstalled);
     };
+  }, []);
+
+  useEffect(() => {
+    if (!isCheerMode) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      playCheer(true);
+      vibrate(true, 24);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   useEffect(() => {
@@ -258,15 +272,11 @@ function App() {
   useEffect(
     () => () => {
       clearMotionTimers();
-      stopBgMusic();
+      clearCountdown();
       if (noticeTimeoutRef.current) window.clearTimeout(noticeTimeoutRef.current);
     },
     []
   );
-
-  useEffect(() => {
-    if (!settings.bgMusic) stopBgMusic();
-  }, [settings.bgMusic]);
 
   function broadcast(message: OutboundChannelMessage) {
     channelRef.current?.postMessage({ ...message, origin: clientIdRef.current } as ChannelMessage);
@@ -277,6 +287,14 @@ function App() {
     intervalsRef.current.forEach((id) => window.clearInterval(id));
     timeoutsRef.current = [];
     intervalsRef.current = [];
+  }
+
+  function clearCountdown() {
+    if (countdownTimerRef.current) {
+      window.clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    setCountdownRemaining(null);
   }
 
   function addTimeout(callback: () => void, delay: number) {
@@ -339,20 +357,21 @@ function App() {
       showNotice('尚無紀錄可匯出');
       return;
     }
-    const header = '時間,得主,權重,玩法,主題,當時人數';
-    const rows = history.map((record) => {
-      const time = new Date(record.at).toLocaleString('zh-TW');
-      const safe = (value: string) => `"${String(value).replace(/"/g, '""')}"`;
-      return [
-        safe(time),
-        safe(record.winnerName),
-        record.winnerWeight,
-        safe(modeLabel(record.mode)),
-        safe(record.theme),
-        record.poolSize
-      ].join(',');
-    });
-    const csv = '﻿' + [header, ...rows].join('\r\n');
+    const header = ['時間', '得獎者', '權重', '玩法', '主題', '池內人數', '批次'];
+    const rows = history.map((record) => [
+      new Date(record.at).toLocaleString('zh-TW'),
+      record.winnerName,
+      String(record.winnerWeight),
+      modeLabel(record.mode),
+      record.theme,
+      String(record.poolSize),
+      record.batchId ?? ''
+    ]);
+    const escape = (value: string) => {
+      if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+      return value;
+    };
+    const csv = '﻿' + [header, ...rows].map((row) => row.map(escape).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -362,7 +381,7 @@ function App() {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    showNotice('紀錄已匯出 CSV');
+    showNotice('歷史紀錄 CSV 已匯出');
   }
 
   async function shareList() {
@@ -391,6 +410,12 @@ function App() {
     } catch {
       showNotice('分享連結已建立，請手動複製');
     }
+  }
+
+  function showQrCode() {
+    const url = shareUrl || createShareUrl(items, settings);
+    setShareUrl(url);
+    setQrModalUrl(url);
   }
 
   function updateSettings(patch: Partial<AppSettings>) {
@@ -442,6 +467,80 @@ function App() {
     setHistory([]);
   }
 
+  function undoLastDraw() {
+    setHistory((current) => {
+      if (!current.length) {
+        showNotice('沒有可還原的紀錄');
+        return current;
+      }
+      const head = current[0];
+      const batchId = head.batchId;
+      const removed = batchId ? current.filter((record) => record.batchId === batchId) : [head];
+      const removedIds = new Set(removed.map((record) => record.winnerId));
+      setItems((items) => items.map((item) => (removedIds.has(item.id) ? { ...item, drawn: false } : item)));
+      setWinners([]);
+      setRunPool([]);
+      showNotice(`已還原 ${removed.length} 筆紀錄`);
+      return batchId ? current.filter((record) => record.batchId !== batchId) : current.slice(1);
+    });
+  }
+
+  async function handleBulkImageImport(fileList: FileList | null) {
+    if (!fileList || !fileList.length) return;
+    const files = Array.from(fileList).filter((file) => file.type.startsWith('image/'));
+    if (!files.length) {
+      showNotice('沒有偵測到圖片檔');
+      return;
+    }
+    const newItems: DrawItem[] = [];
+    for (const file of files) {
+      try {
+        const dataUrl = await compressImage(file);
+        const baseName = file.name.replace(/\.[^.]+$/, '').trim();
+        newItems.push({
+          id: createId('item'),
+          name: baseName || `項目 ${newItems.length + 1}`,
+          weight: 1,
+          drawn: false,
+          createdAt: Date.now() + newItems.length,
+          image: dataUrl
+        });
+      } catch {
+        // skip files we can't process
+      }
+    }
+    if (!newItems.length) {
+      showNotice('圖片處理失敗');
+      return;
+    }
+    setItems((current) => [...current, ...newItems]);
+    setRunPool([]);
+    showNotice(`新增 ${newItems.length} 張圖片項目`);
+  }
+
+  async function handleItemImageReplace(fileList: FileList | null) {
+    const targetId = itemImageTargetRef.current;
+    if (!targetId || !fileList || !fileList.length) return;
+    const file = fileList[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    try {
+      const dataUrl = await compressImage(file);
+      updateItem(targetId, { image: dataUrl });
+    } catch {
+      showNotice('圖片處理失敗');
+    }
+    itemImageTargetRef.current = null;
+  }
+
+  function pickItemImage(itemId: string) {
+    itemImageTargetRef.current = itemId;
+    itemImageInputRef.current?.click();
+  }
+
+  function clearItemImage(itemId: string) {
+    updateItem(itemId, { image: undefined });
+  }
+
   function openDisplayWindow() {
     const url = `${window.location.origin}${window.location.pathname}?display=1`;
     window.open(url, 'lottery-display', 'popup,width=1280,height=800');
@@ -456,6 +555,38 @@ function App() {
     document.exitFullscreen().catch(() => undefined);
   }
 
+  function startDrawWithCountdown() {
+    if (drawingRef.current || countdownRemaining !== null) return;
+    if (!playableItems.length) {
+      showNotice('沒有可抽選的對象');
+      return;
+    }
+    if (!settings.countdown || settings.countdown <= 0) {
+      runDraw();
+      return;
+    }
+    setWinners([]);
+    setCountdownRemaining(settings.countdown);
+    playTone(settings.sound, 660, 0.12, 'triangle');
+    let remaining = settings.countdown;
+    const tick = () => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        if (countdownTimerRef.current) {
+          window.clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+        }
+        setCountdownRemaining(null);
+        runDraw();
+        return;
+      }
+      setCountdownRemaining(remaining);
+      playTone(settings.sound, 660, 0.1, 'triangle');
+      vibrate(settings.vibration, 12);
+    };
+    countdownTimerRef.current = window.setInterval(tick, 1000);
+  }
+
   function runDraw(
     mode = settings.mode,
     forcedWinnerIds?: string[],
@@ -466,17 +597,17 @@ function App() {
     if (drawingRef.current) return;
 
     const playable = getPlayableItems(sourceItems, sourceSettings.skipDrawn);
-    const count = Math.max(1, sourceSettings.drawCount ?? 1);
+    const drawCount = Math.max(1, Math.min(sourceSettings.drawCount || 1, playable.length || 1));
+    let selected: DrawItem[];
+    if (forcedWinnerIds && forcedWinnerIds.length) {
+      selected = forcedWinnerIds
+        .map((id) => playable.find((item) => item.id === id) ?? sourceItems.find((item) => item.id === id))
+        .filter((item): item is DrawItem => Boolean(item));
+    } else {
+      selected = weightedPickN(playable, drawCount);
+    }
 
-    const selectedWinners: DrawItem[] = forcedWinnerIds
-      ? forcedWinnerIds
-          .map((id) => playable.find((item) => item.id === id) ?? sourceItems.find((item) => item.id === id))
-          .filter((item): item is DrawItem => item != null)
-      : pickMultipleWeighted(playable, count);
-
-    const animationTarget = selectedWinners[0] ?? null;
-
-    if (!animationTarget || !playable.length) {
+    if (!selected.length || !playable.length) {
       playTone(sourceSettings.sound, 180, 0.12, 'square');
       vibrate(sourceSettings.vibration, [30, 20, 30]);
       return;
@@ -485,14 +616,9 @@ function App() {
     clearMotionTimers();
     drawingRef.current = true;
     setIsDrawing(true);
-    setWinner(null);
     setWinners([]);
-    setShowWinnerOverlay(false);
     setGachaRevealId(null);
-    setCardPhase('idle');
-    setCardWinner(null);
     setRunPool(playable);
-    setLiveAnnounce('開始抽獎');
     playTone(sourceSettings.sound, 440, 0.08, 'triangle');
     vibrate(sourceSettings.vibration, 18);
 
@@ -500,104 +626,65 @@ function App() {
       broadcast({
         type: 'DRAW',
         commandId: createId('cmd'),
-        winnerIds: selectedWinners.map((w) => w.id),
+        winnerIds: selected.map((item) => item.id),
         mode,
         state: { items: sourceItems, history: stateRef.current.history, settings: { ...sourceSettings, mode } }
       });
     }
 
-    const onDone = () => finishDraw(selectedWinners, mode, playable.length, sourceSettings);
-    const startAnimation = () => {
-      if (sourceSettings.bgMusic) startBgMusic();
-      if (sourceSettings.quickMode) {
-        // 快速模式：跳過動畫直接揭曉
-        addTimeout(onDone, 250);
-        return;
-      }
-      if (mode === 'wheel') {
-        animateWheel(playable, animationTarget, sourceSettings, onDone);
-        return;
-      }
-      if (mode === 'slot') {
-        animateSlot(playable, animationTarget, sourceSettings, onDone);
-        return;
-      }
-      if (mode === 'gacha') {
-        animateGacha(playable, animationTarget, sourceSettings, onDone);
-        return;
-      }
-      if (mode === 'card') {
-        animateCard(animationTarget, sourceSettings, onDone);
-        return;
-      }
-      animateMarquee(playable, animationTarget, sourceSettings, onDone);
-    };
+    const headWinner = selected[0];
 
-    const countdownSeconds = sourceSettings.countdown ?? 0;
-    if (countdownSeconds > 0 && !sourceSettings.quickMode) {
-      runCountdown(countdownSeconds, sourceSettings, startAnimation);
-    } else {
-      startAnimation();
+    const onAnimationDone = () => finishDraw(selected, mode, playable.length, sourceSettings);
+
+    if (mode === 'wheel') {
+      animateWheel(playable, headWinner, sourceSettings, onAnimationDone);
+      return;
     }
+
+    if (mode === 'slot') {
+      animateSlot(playable, headWinner, sourceSettings, onAnimationDone);
+      return;
+    }
+
+    if (mode === 'gacha') {
+      animateGacha(playable, headWinner, sourceSettings, onAnimationDone);
+      return;
+    }
+
+    animateMarquee(playable, headWinner, sourceSettings, onAnimationDone);
   }
 
-  function runCountdown(seconds: number, sourceSettings: AppSettings, onComplete: () => void) {
-    let remaining = seconds;
-    setCountdownNumber(remaining);
-    setLiveAnnounce(`倒數 ${remaining} 秒`);
-    playTone(sourceSettings.sound, 660, 0.1, 'sine');
-    vibrate(sourceSettings.vibration, 30);
-
-    const tick = () => {
-      remaining -= 1;
-      if (remaining > 0) {
-        setCountdownNumber(remaining);
-        playTone(sourceSettings.sound, 660, 0.1, 'sine');
-        vibrate(sourceSettings.vibration, 30);
-        addTimeout(tick, 1000);
-      } else {
-        setCountdownNumber(0);
-        playTone(sourceSettings.sound, 1320, 0.18, 'triangle');
-        vibrate(sourceSettings.vibration, [60, 30, 90]);
-        addTimeout(() => {
-          setCountdownNumber(null);
-          onComplete();
-        }, 600);
-      }
-    };
-    addTimeout(tick, 1000);
-  }
-
-  function finishDraw(winningItems: DrawItem[], mode: GameMode, poolSize: number, sourceSettings: AppSettings) {
-    const now = new Date().toISOString();
-    const newRecords: DrawRecord[] = winningItems.map((item) => ({
+  function finishDraw(allWinners: DrawItem[], mode: GameMode, poolSize: number, sourceSettings: AppSettings) {
+    const batchId = allWinners.length > 1 ? createId('batch') : undefined;
+    const records: DrawRecord[] = allWinners.map((winner) => ({
       id: createId('draw'),
-      winnerId: item.id,
-      winnerName: item.name,
-      winnerWeight: item.weight,
+      winnerId: winner.id,
+      winnerName: winner.name,
+      winnerWeight: winner.weight,
+      winnerImage: winner.image,
       mode,
       theme: sourceSettings.theme,
       poolSize,
-      at: now
+      at: new Date().toISOString(),
+      batchId
     }));
 
-    setWinner(winningItems[0] ?? null);
-    setWinners(winningItems);
-    setHistory((current) => [...newRecords, ...current].slice(0, 200));
+    setWinners(allWinners);
+    setBannerName(allWinners.map((winner) => winner.name).join('、'));
+    setBannerKey((current) => current + 1);
+    setHistory((current) => [...records, ...current].slice(0, 200));
     if (sourceSettings.autoMarkDrawn) {
-      const winnerIdSet = new Set(winningItems.map((w) => w.id));
-      setItems((current) => current.map((item) => (winnerIdSet.has(item.id) ? { ...item, drawn: true } : item)));
+      const winnerIds = new Set(allWinners.map((winner) => winner.id));
+      setItems((current) => current.map((item) => (winnerIds.has(item.id) ? { ...item, drawn: true } : item)));
     }
     setConfettiKey((current) => current + 1);
-    setShowWinnerOverlay(true);
     setIsDrawing(false);
     drawingRef.current = false;
-    if (sourceSettings.bgMusic) stopBgMusic();
-    const winnerNames = winningItems.map((w) => w.name).join('、');
-    setLiveAnnounce(`恭喜得主 ${winnerNames}`);
-    speak(sourceSettings.voiceAnnounce, `恭喜${winnerNames}中獎`);
     playTone(sourceSettings.sound, 784, 0.12, 'triangle');
     addTimeout(() => playTone(sourceSettings.sound, 1046, 0.15, 'triangle'), 120);
+    if (allWinners.length > 1) {
+      playCheer(sourceSettings.sound);
+    }
     vibrate(sourceSettings.vibration, [80, 40, 120]);
   }
 
@@ -659,14 +746,13 @@ function App() {
   }
 
   function animateSlot(pool: DrawItem[], winningItem: DrawItem, sourceSettings: AppSettings, onDone: () => void) {
-    const names = pool.map((item) => item.name);
-    setSlotReels(createReels(names));
+    setSlotReels(createReels(pool));
 
     [0, 1, 2].forEach((column) => {
       const interval = addInterval(() => {
         setSlotReels((current) => {
-          const next = current.length ? [...current] : createReels(names);
-          next[column] = createReelWindow(names);
+          const next = current.length ? [...current] : createReels(pool);
+          next[column] = createReelWindow(pool);
           return next;
         });
         playTone(sourceSettings.sound, 220 + column * 80, 0.025, 'square');
@@ -677,8 +763,8 @@ function App() {
         window.clearInterval(interval);
         intervalsRef.current = intervalsRef.current.filter((id) => id !== interval);
         setSlotReels((current) => {
-          const next = current.length ? [...current] : createReels(names);
-          next[column] = createReelWindow(names, winningItem.name);
+          const next = current.length ? [...current] : createReels(pool);
+          next[column] = createReelWindow(pool, winningItem);
           return next;
         });
         playTone(sourceSettings.sound, 520 + column * 90, 0.09, 'triangle');
@@ -715,85 +801,97 @@ function App() {
     addTimeout(onDone, duration + 960);
   }
 
-  function animateCard(winningItem: DrawItem, sourceSettings: AppSettings, onDone: () => void) {
-    setCardWinner(null);
-    setCardPhase('shaking');
-
-    const shakeDuration = 1200 + sourceSettings.excitement * 100;
-    const ticks = Math.max(8, Math.round(shakeDuration / 140));
-
-    for (let index = 0; index < ticks; index += 1) {
-      addTimeout(() => {
-        playTone(sourceSettings.sound, 280 + (index % 5) * 30, 0.04, 'square');
-        if (index % 3 === 0) vibrate(sourceSettings.vibration, 10);
-      }, index * 140);
-    }
-
-    addTimeout(() => {
-      setCardPhase('flipping');
-      setCardWinner(winningItem);
-      playTone(sourceSettings.sound, 660, 0.18, 'triangle');
-      addTimeout(() => playTone(sourceSettings.sound, 988, 0.18, 'triangle'), 180);
-      vibrate(sourceSettings.vibration, [50, 30, 90]);
-    }, shakeDuration);
-
-    addTimeout(() => {
-      setCardPhase('revealed');
-    }, shakeDuration + 700);
-
-    addTimeout(onDone, shakeDuration + 1100);
-  }
-
   const activeMode = modeOptions.find((mode) => mode.value === settings.mode) ?? modeOptions[0];
+  const headerLabel = countdownRemaining !== null
+    ? `倒數 ${countdownRemaining}`
+    : isDrawing
+      ? '抽選中'
+      : winners.length
+        ? winners.length > 1 ? `本次 ${winners.length} 位得主` : '本次得主'
+        : '待命';
+  const headerName = countdownRemaining !== null
+    ? String(countdownRemaining)
+    : winners.length
+      ? winners.length > 1
+        ? winners.map((winner) => winner.name).join('、')
+        : winners[0]!.name
+      : activeMode.label;
 
   return (
     <div
-      className={`app theme-${settings.theme} ${settings.hostMode ? 'host-mode' : ''} ${isDisplayOnly ? 'display-only' : ''}`}
+      className={[
+        'app',
+        `theme-${settings.theme}`,
+        settings.hostMode ? 'host-mode' : '',
+        isDisplayOnly ? 'display-only' : '',
+        isObsMode ? 'obs-mode' : '',
+        isCheerMode ? 'cheer-mode' : ''
+      ]
+        .filter(Boolean)
+        .join(' ')}
     >
-      <div className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">
-        {liveAnnounce}
-      </div>
-      {countdownNumber !== null && <CountdownOverlay value={countdownNumber} />}
-      {showWinnerOverlay && winners.length > 0 && (
-        <WinnerOverlay winners={winners} onDismiss={() => setShowWinnerOverlay(false)} />
-      )}
-      {showQrModal && shareUrl && <QrModal url={shareUrl} onClose={() => setShowQrModal(false)} />}
-      {showStats && (
-        <StatsModal history={history} items={items} onClose={() => setShowStats(false)} colors={activePalette} />
-      )}
-      <Confetti burstKey={confettiKey} colors={activePalette} />
+      <Confetti burstKey={confettiKey} />
+      <WinnerBanner key={bannerKey} burstKey={bannerKey} name={bannerName} />
+      {countdownRemaining !== null && <CountdownOverlay value={countdownRemaining} />}
       {notice && <div className="app-notice">{notice}</div>}
 
-      <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark">
-            <Shuffle size={22} />
-          </span>
-          <div>
-            <h1>跑馬燈抽獎機</h1>
-            <p>{activeMode.label}</p>
-          </div>
-        </div>
+      <input
+        type="file"
+        accept="image/*"
+        multiple
+        ref={fileInputRef}
+        style={{ display: 'none' }}
+        onChange={(event) => {
+          handleBulkImageImport(event.target.files);
+          event.target.value = '';
+        }}
+      />
+      <input
+        type="file"
+        accept="image/*"
+        ref={itemImageInputRef}
+        style={{ display: 'none' }}
+        onChange={(event) => {
+          handleItemImageReplace(event.target.files);
+          event.target.value = '';
+        }}
+      />
 
-        {!isDisplayOnly && (
-          <div className="top-actions">
-            <button className="install-button" type="button" title="安裝到裝置" onClick={installApp}>
-              <Download size={18} />
-              {isInstalled ? '已安裝' : '安裝'}
-            </button>
-            <button className="icon-button" type="button" title="投影分頁" onClick={openDisplayWindow}>
-              <MonitorUp size={20} />
-            </button>
-            <button className="icon-button" type="button" title="全螢幕" onClick={toggleFullscreen}>
-              <Maximize2 size={20} />
-            </button>
+      {!isObsMode && (
+        <header className="topbar">
+          <div className="brand">
+            <span className="brand-mark">
+              <Shuffle size={22} />
+            </span>
+            <div>
+              <h1>跑馬燈抽獎機</h1>
+              <p>{activeMode.label}</p>
+            </div>
           </div>
-        )}
-      </header>
+
+          {!isDisplayOnly && (
+            <div className="top-actions">
+              <button className="install-button" type="button" title="安裝到裝置" onClick={installApp}>
+                <Download size={18} />
+                {isInstalled ? '已安裝' : '安裝'}
+              </button>
+              <button className="icon-button" type="button" title="QR Code" onClick={showQrCode}>
+                <QrCode size={20} />
+              </button>
+              <button className="icon-button" type="button" title="投影分頁" onClick={openDisplayWindow}>
+                <MonitorUp size={20} />
+              </button>
+              <button className="icon-button" type="button" title="全螢幕" onClick={toggleFullscreen}>
+                <Maximize2 size={20} />
+              </button>
+            </div>
+          )}
+        </header>
+      )}
 
       <main className="workspace">
-        {!isDisplayOnly && (
-          <aside className="panel roster-panel">
+        {!isDisplayOnly && !isObsMode && (
+          <aside className={`panel roster-panel ${editingDisabled ? 'is-locked' : ''}`}>
             <section className="panel-section">
               <div className="section-title">
                 <ListPlus size={18} />
@@ -804,6 +902,7 @@ function App() {
                 <input
                   value={newName}
                   placeholder="名稱"
+                  disabled={editingDisabled}
                   onChange={(event) => setNewName(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') addItem();
@@ -815,9 +914,16 @@ function App() {
                   step="0.1"
                   type="number"
                   value={newWeight}
+                  disabled={editingDisabled}
                   onChange={(event) => setNewWeight(Number(event.target.value))}
                 />
-                <button className="icon-button accent" type="button" title="新增" onClick={addItem}>
+                <button
+                  className="icon-button accent"
+                  type="button"
+                  title="新增"
+                  disabled={editingDisabled}
+                  onClick={addItem}
+                >
                   <Plus size={20} />
                 </button>
               </div>
@@ -826,14 +932,15 @@ function App() {
                 className="import-box"
                 value={importText}
                 placeholder={'貼上名單，每行一筆\n王小明,2\n李小華,1'}
+                disabled={editingDisabled}
                 onChange={(event) => setImportText(event.target.value)}
               />
               <div className="button-row">
-                <button type="button" onClick={() => applyImport(false)}>
+                <button type="button" disabled={editingDisabled} onClick={() => applyImport(false)}>
                   <Upload size={17} />
                   匯入
                 </button>
-                <button type="button" onClick={() => applyImport(true)}>
+                <button type="button" disabled={editingDisabled} onClick={() => applyImport(true)}>
                   <Eraser size={17} />
                   取代
                 </button>
@@ -845,16 +952,16 @@ function App() {
                   <Share2 size={17} />
                   分享
                 </button>
+              </div>
+              <div className="button-row">
                 <button
                   type="button"
-                  onClick={() => {
-                    const url = createShareUrl(items, settings);
-                    setShareUrl(url);
-                    setShowQrModal(true);
-                  }}
+                  disabled={editingDisabled}
+                  onClick={() => fileInputRef.current?.click()}
+                  title="一次匯入多張圖片，每張變成一個項目"
                 >
-                  <QrCode size={17} />
-                  QR
+                  <FileImage size={17} />
+                  圖片匯入
                 </button>
               </div>
               {shareUrl && (
@@ -876,7 +983,10 @@ function App() {
 
             <section className="panel-section roster-list" aria-label="抽獎名單">
               {items.map((item) => (
-                <div className={`roster-item ${item.drawn ? 'is-drawn' : ''}`} key={item.id}>
+                <div
+                  className={`roster-item ${item.drawn ? 'is-drawn' : ''} ${item.excluded ? 'is-excluded' : ''}`}
+                  key={item.id}
+                >
                   <button
                     className="drawn-toggle"
                     type="button"
@@ -885,16 +995,51 @@ function App() {
                   >
                     {item.drawn ? <Check size={15} /> : <Trophy size={15} />}
                   </button>
-                  <input value={item.name} onChange={(event) => updateItem(item.id, { name: event.target.value })} />
+                  <button
+                    className={`thumb-button ${item.image ? 'has-image' : ''}`}
+                    type="button"
+                    title={item.image ? '點擊更換圖片' : '加入圖片'}
+                    onClick={() => pickItemImage(item.id)}
+                  >
+                    {item.image ? (
+                      <img src={item.image} alt={item.name} />
+                    ) : (
+                      <ImagePlus size={16} />
+                    )}
+                  </button>
+                  <input
+                    value={item.name}
+                    disabled={editingDisabled}
+                    onChange={(event) => updateItem(item.id, { name: event.target.value })}
+                  />
                   <input
                     className="weight-input"
                     min="0.1"
                     step="0.1"
                     type="number"
                     value={item.weight}
-                    onChange={(event) => updateItem(item.id, { weight: Math.max(0, Number(event.target.value) || 0) })}
+                    disabled={editingDisabled}
+                    onChange={(event) =>
+                      updateItem(item.id, { weight: Math.max(0, Number(event.target.value) || 0) })
+                    }
                   />
-                  <button className="icon-button quiet" type="button" title="刪除" onClick={() => deleteItem(item.id)}>
+                  {item.image && (
+                    <button
+                      className="icon-button quiet small"
+                      type="button"
+                      title="清除圖片"
+                      onClick={() => clearItemImage(item.id)}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                  <button
+                    className="icon-button quiet"
+                    type="button"
+                    title="刪除"
+                    disabled={editingDisabled}
+                    onClick={() => deleteItem(item.id)}
+                  >
                     <Trash2 size={17} />
                   </button>
                 </div>
@@ -904,49 +1049,40 @@ function App() {
         )}
 
         <section className="stage-shell">
-          <div className="mode-tabs" role="tablist" aria-label="玩法">
-            {modeOptions.map(({ value, label, Icon }) => (
-              <button
-                className={settings.mode === value ? 'is-active' : ''}
-                type="button"
-                role="tab"
-                aria-selected={settings.mode === value}
-                key={value}
-                disabled={isDrawing || isDisplayOnly}
-                onClick={() => {
-                  updateSettings({ mode: value });
-                  setWinner(null);
-                  setWinners([]);
-                  setShowWinnerOverlay(false);
-                  setRunPool([]);
-                  setGachaRevealId(null);
-                  setCardPhase('idle');
-                  setCardWinner(null);
-                }}
-              >
-                <Icon size={18} />
-                {label}
-              </button>
-            ))}
-          </div>
+          {!isObsMode && (
+            <div className="mode-tabs" role="tablist" aria-label="玩法">
+              {modeOptions.map(({ value, label, Icon }) => (
+                <button
+                  className={settings.mode === value ? 'is-active' : ''}
+                  type="button"
+                  role="tab"
+                  aria-selected={settings.mode === value}
+                  key={value}
+                  disabled={editingDisabled || isDisplayOnly}
+                  onClick={() => {
+                    updateSettings({ mode: value });
+                    setWinners([]);
+                    setRunPool([]);
+                    setGachaRevealId(null);
+                  }}
+                >
+                  <Icon size={18} />
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="stage-card">
-            <div className="stage-status">
+            <div className="stage-status" aria-live="polite">
               <div>
-                <span className="eyebrow">
-                  {isDrawing ? '抽選中' : winners.length ? (winners.length > 1 ? `本次得主 ${winners.length} 位` : '本次得主') : '待命'}
-                </span>
-                <strong>
-                  {winners.length
-                    ? winners.length === 1
-                      ? winners[0].name
-                      : winners.map((w) => w.name).join('、')
-                    : activeMode.label}
-                </strong>
+                <span className="eyebrow">{headerLabel}</span>
+                <strong>{headerName}</strong>
               </div>
               <div className="pool-stats">
                 <span>{playableItems.length} 位</span>
                 <span>{totalWeight.toFixed(1)} 權重</span>
+                <span>抽 {Math.min(settings.drawCount, Math.max(playableItems.length, 1))} 名</span>
               </div>
             </div>
 
@@ -960,29 +1096,51 @@ function App() {
               gachaCards={gachaCards}
               gachaRevealId={gachaRevealId}
               gachaShuffleKey={gachaShuffleKey}
-              cardPhase={cardPhase}
-              cardWinner={cardWinner}
-              winner={winner}
+              winner={primaryWinner}
+              winnerIds={winners.map((winner) => winner.id)}
               isDrawing={isDrawing}
-              palette={activePalette}
             />
 
-            <div className="control-deck">
-              <button className="start-button" type="button" disabled={isDrawing || !playableItems.length} onClick={() => runDraw()}>
-                <Play size={22} fill="currentColor" />
-                {isDrawing ? '抽選中' : '開始抽獎'}
-              </button>
-              {!isDisplayOnly && (
-                <button className="secondary-button" type="button" onClick={resetDrawn}>
-                  <RotateCcw size={18} />
-                  重置抽中
+            {winners.length > 1 && !isDrawing && (
+              <div className="winners-row" aria-label="本次得獎者">
+                {winners.map((winner) => (
+                  <div className="winners-row-item" key={winner.id}>
+                    {winner.image ? (
+                      <img src={winner.image} alt={winner.name} />
+                    ) : (
+                      <span className="winners-row-mark">
+                        <Trophy size={18} />
+                      </span>
+                    )}
+                    <strong>{winner.name}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!isObsMode && (
+              <div className="control-deck">
+                <button
+                  className="start-button"
+                  type="button"
+                  disabled={isDrawing || countdownRemaining !== null || !playableItems.length}
+                  onClick={startDrawWithCountdown}
+                >
+                  <Play size={22} fill="currentColor" />
+                  {countdownRemaining !== null ? `倒數 ${countdownRemaining}` : isDrawing ? '抽選中' : '開始抽獎'}
                 </button>
-              )}
-            </div>
+                {!isDisplayOnly && (
+                  <button className="secondary-button" type="button" onClick={resetDrawn}>
+                    <RotateCcw size={18} />
+                    重置抽中
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </section>
 
-        {!isDisplayOnly && (
+        {!isDisplayOnly && !isObsMode && (
           <aside className="panel settings-panel">
             <section className="panel-section">
               <div className="section-title">
@@ -1002,9 +1160,7 @@ function App() {
               </label>
 
               <label className="field">
-                <span>
-                  緊張感 <em className="field-hint">{excitementLabels[settings.excitement] ?? ''}</em>
-                </span>
+                <span>緊張感</span>
                 <input
                   min="1"
                   max="10"
@@ -1015,55 +1171,31 @@ function App() {
               </label>
 
               <label className="field">
-                <span>抽出人數</span>
-                <div className="count-stepper">
-                  <button
-                    className="icon-button quiet"
-                    type="button"
-                    onClick={() => updateSettings({ drawCount: Math.max(1, (settings.drawCount ?? 1) - 1) })}
-                  >
-                    −
-                  </button>
-                  <span className="count-display">{settings.drawCount ?? 1}</span>
-                  <button
-                    className="icon-button quiet"
-                    type="button"
-                    onClick={() =>
-                      updateSettings({ drawCount: Math.min(Math.max(1, playableItems.length), (settings.drawCount ?? 1) + 1) })
-                    }
-                  >
-                    ＋
-                  </button>
-                </div>
-              </label>
-
-              <label className="field">
                 <span>
-                  <Timer size={14} style={{ verticalAlign: 'middle' }} /> 倒數
+                  <Users size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+                  一次抽幾名
                 </span>
                 <select
-                  value={settings.countdown ?? 0}
-                  onChange={(event) => updateSettings({ countdown: Number(event.target.value) })}
+                  value={settings.drawCount}
+                  onChange={(event) => updateSettings({ drawCount: Number(event.target.value) })}
                 >
-                  {countdownOptions.map((opt) => (
-                    <option value={opt.value} key={opt.value}>
-                      {opt.label}
+                  {drawCountOptions.map((value) => (
+                    <option value={value} key={value}>
+                      {value} 名
                     </option>
                   ))}
                 </select>
               </label>
 
               <label className="field">
-                <span>
-                  <Palette size={14} style={{ verticalAlign: 'middle' }} /> 轉盤色盤
-                </span>
+                <span>倒數</span>
                 <select
-                  value={settings.wheelPalette ?? 'rainbow'}
-                  onChange={(event) => updateSettings({ wheelPalette: event.target.value as WheelPalette })}
+                  value={settings.countdown}
+                  onChange={(event) => updateSettings({ countdown: Number(event.target.value) })}
                 >
-                  {Object.entries(wheelPalettes).map(([key, palette]) => (
-                    <option value={key} key={key}>
-                      {palette.label}
+                  {countdownOptions.map((option) => (
+                    <option value={option.value} key={option.value}>
+                      {option.label}
                     </option>
                   ))}
                 </select>
@@ -1099,30 +1231,6 @@ function App() {
                   <MonitorUp size={17} />
                   主持人模式
                 </button>
-                <button
-                  className={`toggle ${settings.bgMusic ? 'is-on' : ''}`}
-                  type="button"
-                  onClick={() => updateSettings({ bgMusic: !settings.bgMusic })}
-                >
-                  <Music size={17} />
-                  氣氛音樂
-                </button>
-                <button
-                  className={`toggle ${settings.voiceAnnounce ? 'is-on' : ''}`}
-                  type="button"
-                  onClick={() => updateSettings({ voiceAnnounce: !settings.voiceAnnounce })}
-                >
-                  <Megaphone size={17} />
-                  語音播報
-                </button>
-                <button
-                  className={`toggle ${settings.quickMode ? 'is-on' : ''}`}
-                  type="button"
-                  onClick={() => updateSettings({ quickMode: !settings.quickMode })}
-                >
-                  <Zap size={17} />
-                  快速連抽
-                </button>
               </div>
             </section>
 
@@ -1138,6 +1246,7 @@ function App() {
                       <strong>{record.winnerName}</strong>
                       <span>
                         {formatTime(record.at)} · {modeLabel(record.mode)} · {record.poolSize} 位
+                        {record.batchId ? ' · 連抽' : ''}
                       </span>
                     </article>
                   ))
@@ -1146,23 +1255,25 @@ function App() {
                 )}
               </div>
               <div className="button-row">
-                <button type="button" onClick={() => setShowStats(true)} disabled={!history.length}>
-                  <BarChart3 size={17} />
-                  統計
+                <button type="button" onClick={undoLastDraw}>
+                  <Undo2 size={17} />
+                  撤銷上一次
                 </button>
-                <button type="button" onClick={exportHistoryCsv} disabled={!history.length}>
+                <button type="button" onClick={exportHistoryCsv}>
                   <FileSpreadsheet size={17} />
-                  CSV
-                </button>
-                <button type="button" onClick={clearHistory}>
-                  <Trash2 size={17} />
-                  清空
+                  匯出 CSV
                 </button>
               </div>
+              <button className="secondary-button full-width" type="button" onClick={clearHistory}>
+                <Trash2 size={17} />
+                清空紀錄
+              </button>
             </section>
           </aside>
         )}
       </main>
+
+      {qrModalUrl && <QrModal url={qrModalUrl} onClose={() => setQrModalUrl(null)} />}
     </div>
   );
 }
@@ -1177,26 +1288,22 @@ function ModeStage({
   gachaCards,
   gachaRevealId,
   gachaShuffleKey,
-  cardPhase,
-  cardWinner,
   winner,
-  isDrawing,
-  palette
+  winnerIds,
+  isDrawing
 }: {
   mode: GameMode;
   items: DrawItem[];
   marqueeIndex: number;
   wheelRotation: number;
   wheelMs: number;
-  slotReels: string[][];
+  slotReels: ReelCell[][];
   gachaCards: DrawItem[];
   gachaRevealId: string | null;
   gachaShuffleKey: number;
-  cardPhase: 'idle' | 'shaking' | 'flipping' | 'revealed';
-  cardWinner: DrawItem | null;
   winner: DrawItem | null;
+  winnerIds: string[];
   isDrawing: boolean;
-  palette: string[];
 }) {
   if (!items.length) {
     return (
@@ -1208,14 +1315,14 @@ function ModeStage({
   }
 
   if (mode === 'wheel') {
-    return <WheelStage items={items} rotation={wheelRotation} duration={wheelMs} winner={winner} colors={palette} />;
+    return <WheelStage items={items} rotation={wheelRotation} duration={wheelMs} winner={winner} />;
   }
 
   if (mode === 'slot') {
     return (
       <SlotStage
-        reels={slotReels.length ? slotReels : createReels(items.map((item) => item.name))}
-        winner={winner}
+        reels={slotReels.length ? slotReels : createReels(items)}
+        winnerId={winner?.id ?? null}
         isDrawing={isDrawing}
       />
     );
@@ -1226,60 +1333,33 @@ function ModeStage({
       <GachaStage
         cards={gachaCards.length ? gachaCards : buildGachaDeck(items, null)}
         revealId={gachaRevealId}
-        winner={winner}
+        winnerIds={winnerIds}
         isDrawing={isDrawing}
         shuffleKey={gachaShuffleKey}
       />
     );
   }
 
-  if (mode === 'card') {
-    return <CardStage phase={cardPhase} winner={cardWinner ?? winner} />;
-  }
-
-  return <MarqueeStage items={items} activeIndex={marqueeIndex} />;
+  return <MarqueeStage items={items} activeIndex={marqueeIndex} winnerIds={winnerIds} />;
 }
 
-function CardStage({
-  phase,
-  winner
-}: {
-  phase: 'idle' | 'shaking' | 'flipping' | 'revealed';
-  winner: DrawItem | null;
-}) {
-  return (
-    <div className="card-stage">
-      <div className={`single-card phase-${phase}`}>
-        <div className="single-card-inner">
-          <div className="single-card-face single-card-back">
-            <div className="single-card-pattern">
-              <Sparkles size={56} />
-              <div className="single-card-back-text">LUCKY</div>
-              <Sparkles size={56} />
-            </div>
-          </div>
-          <div className="single-card-face single-card-front">
-            <Trophy size={42} />
-            <strong>{winner?.name ?? '— ' /* fallback */}</strong>
-            <span className="single-card-tag">恭喜中獎</span>
-          </div>
-        </div>
-      </div>
-      <p className="card-stage-hint">
-        {phase === 'idle' && '按下開始抽獎，命運之卡將翻面揭曉'}
-        {phase === 'shaking' && '緊張感醞釀中…'}
-        {phase === 'flipping' && '翻牌！'}
-        {phase === 'revealed' && '本次得主已揭曉'}
-      </p>
-    </div>
-  );
-}
-
-function MarqueeStage({ items, activeIndex }: { items: DrawItem[]; activeIndex: number }) {
+function MarqueeStage({ items, activeIndex, winnerIds }: { items: DrawItem[]; activeIndex: number; winnerIds: string[] }) {
+  const winnerSet = new Set(winnerIds);
   return (
     <div className="marquee-grid">
       {items.map((item, index) => (
-        <div className={`marquee-tile ${index === activeIndex ? 'is-hot' : ''} ${item.drawn ? 'is-drawn' : ''}`} key={item.id}>
+        <div
+          className={[
+            'marquee-tile',
+            index === activeIndex ? 'is-hot' : '',
+            item.drawn ? 'is-drawn' : '',
+            winnerSet.has(item.id) ? 'is-winner' : ''
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          key={item.id}
+        >
+          {item.image && <img className="tile-image" src={item.image} alt={item.name} />}
           <span>{item.name}</span>
           <small>{item.weight}x</small>
         </div>
@@ -1288,25 +1368,13 @@ function MarqueeStage({ items, activeIndex }: { items: DrawItem[]; activeIndex: 
   );
 }
 
-function WheelStage({
-  items,
-  rotation,
-  duration,
-  winner,
-  colors
-}: {
-  items: DrawItem[];
-  rotation: number;
-  duration: number;
-  winner: DrawItem | null;
-  colors: string[];
-}) {
+function WheelStage({ items, rotation, duration, winner }: { items: DrawItem[]; rotation: number; duration: number; winner: DrawItem | null }) {
   const segment = 360 / items.length;
   const gradient = items
     .map((item, index) => {
       const start = index * segment;
       const end = (index + 1) * segment;
-      return `${colors[index % colors.length]} ${start}deg ${end}deg`;
+      return `${wheelColors[index % wheelColors.length]} ${start}deg ${end}deg`;
     })
     .join(', ');
 
@@ -1333,7 +1401,7 @@ function WheelStage({
             style={
               {
                 ...wheelLabelStyle(index * segment + segment / 2, labelRadius),
-                '--label-bg': colors[index % colors.length]
+                '--label-bg': wheelColors[index % wheelColors.length]
               } as CSSProperties
             }
           >
@@ -1342,7 +1410,11 @@ function WheelStage({
         ))}
       </div>
       <div className="wheel-hub">
-        <Trophy size={24} />
+        {winner?.image ? (
+          <img className="wheel-hub-image" src={winner.image} alt={winner.name} />
+        ) : (
+          <Trophy size={24} />
+        )}
         <strong>{winner?.name ?? 'READY'}</strong>
       </div>
     </div>
@@ -1357,17 +1429,26 @@ function wheelLabelStyle(angle: number, radius: number): CSSProperties {
   };
 }
 
-function SlotStage({ reels, winner, isDrawing }: { reels: string[][]; winner: DrawItem | null; isDrawing: boolean }) {
+function SlotStage({ reels, winnerId, isDrawing }: { reels: ReelCell[][]; winnerId: string | null; isDrawing: boolean }) {
   return (
     <div className={`slot-machine ${isDrawing ? 'is-spinning' : ''}`}>
       {reels.map((reel, column) => (
-        <div className="slot-reel" key={`${column}-${reel.join('-')}`}>
-          {reel.map((name, index) => (
+        <div className="slot-reel" key={`${column}-${reel.map((cell) => cell.id ?? cell.name).join('-')}`}>
+          {reel.map((cell, index) => (
             <div
-              className={`slot-cell ${index === 1 ? 'is-center' : ''} ${winner?.name === name && index === 1 ? 'is-winner' : ''}`}
-              key={`${name}-${index}`}
+              className={[
+                'slot-cell',
+                index === 1 ? 'is-center' : '',
+                winnerId && cell.id === winnerId && index === 1 ? 'is-winner' : ''
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              key={`${cell.id ?? cell.name}-${index}`}
             >
-              {name}
+              {cell.image && index === 1 ? (
+                <img className="slot-cell-image" src={cell.image} alt={cell.name} />
+              ) : null}
+              <span>{cell.name}</span>
             </div>
           ))}
         </div>
@@ -1379,20 +1460,21 @@ function SlotStage({ reels, winner, isDrawing }: { reels: string[][]; winner: Dr
 function GachaStage({
   cards,
   revealId,
-  winner,
+  winnerIds,
   isDrawing,
   shuffleKey
 }: {
   cards: DrawItem[];
   revealId: string | null;
-  winner: DrawItem | null;
+  winnerIds: string[];
   isDrawing: boolean;
   shuffleKey: number;
 }) {
+  const winnerSet = new Set(winnerIds);
   return (
     <div className={`gacha-stage ${isDrawing ? 'is-drawing' : ''}`} data-shuffle={shuffleKey}>
       {cards.map((card, index) => {
-        const revealed = card.id === revealId || (!isDrawing && winner?.id === card.id);
+        const revealed = card.id === revealId || (!isDrawing && winnerSet.has(card.id));
         return (
           <div
             className={`gacha-card ${revealed ? 'is-revealed' : ''}`}
@@ -1405,7 +1487,11 @@ function GachaStage({
                 <strong>?</strong>
               </div>
               <div className="gacha-face gacha-front">
-                <Trophy size={28} />
+                {card.image ? (
+                  <img className="gacha-card-image" src={card.image} alt={card.name} />
+                ) : (
+                  <Trophy size={28} />
+                )}
                 <strong>{card.name}</strong>
                 <small>{card.weight}x</small>
               </div>
@@ -1426,7 +1512,7 @@ function ToggleButton({ active, children, onClick }: { active: boolean; children
   );
 }
 
-function Confetti({ burstKey, colors = wheelColors }: { burstKey: number; colors?: string[] }) {
+function Confetti({ burstKey }: { burstKey: number }) {
   const particles = useMemo(() => {
     if (!burstKey) return [];
     return Array.from({ length: 56 }, (_, index) => ({
@@ -1436,9 +1522,9 @@ function Confetti({ burstKey, colors = wheelColors }: { burstKey: number; colors
       duration: 1.25 + Math.random() * 1.1,
       rotate: Math.random() * 720,
       size: 7 + Math.random() * 9,
-      color: colors[index % colors.length]
+      color: wheelColors[index % wheelColors.length]
     }));
-  }, [burstKey, colors]);
+  }, [burstKey]);
 
   if (!particles.length) return null;
 
@@ -1459,6 +1545,64 @@ function Confetti({ burstKey, colors = wheelColors }: { burstKey: number; colors
           }
         />
       ))}
+    </div>
+  );
+}
+
+function WinnerBanner({ burstKey, name }: { burstKey: number; name: string }) {
+  if (!burstKey || !name) return null;
+  return (
+    <div className="winner-banner" aria-hidden="true">
+      <div className="winner-banner-track">
+        <span>🏆 {name} 🎉 {name} 🎊 {name} ✨ {name}</span>
+      </div>
+    </div>
+  );
+}
+
+function CountdownOverlay({ value }: { value: number }) {
+  return (
+    <div className="countdown-overlay" aria-live="polite" key={value}>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function QrModal({ url, onClose }: { url: string; onClose: () => void }) {
+  const [svg, setSvg] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSvg(null);
+    setError(false);
+    generateQrSvg(url)
+      .then((value) => {
+        if (!cancelled) setSvg(value);
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  return (
+    <div className="qr-modal" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="qr-modal-card" onClick={(event) => event.stopPropagation()}>
+        <button className="icon-button quiet qr-close" type="button" title="關閉" onClick={onClose}>
+          <X size={18} />
+        </button>
+        {error ? (
+          <p>名單過長，無法生成 QR Code，請使用分享連結。</p>
+        ) : svg ? (
+          <div className="qr-canvas" dangerouslySetInnerHTML={{ __html: svg }} />
+        ) : (
+          <div className="qr-canvas" aria-hidden="true" />
+        )}
+        <p className="qr-url">{url}</p>
+      </div>
     </div>
   );
 }
@@ -1548,19 +1692,28 @@ function shuffleDrawItems(items: DrawItem[]) {
   return next;
 }
 
-function createReels(names: string[]) {
-  return [createReelWindow(names), createReelWindow(names), createReelWindow(names)];
+function createReels(items: DrawItem[]): ReelCell[][] {
+  return [createReelWindow(items), createReelWindow(items), createReelWindow(items)];
 }
 
-function createReelWindow(names: string[], center?: string) {
-  if (!names.length) return ['-', '-', '-'];
-  const middle = center ?? pickName(names);
-  return [pickName(names), middle, pickName(names)];
+function createReelWindow(items: DrawItem[], center?: DrawItem): ReelCell[] {
+  if (!items.length) {
+    return [
+      { id: null, name: '-' },
+      { id: null, name: '-' },
+      { id: null, name: '-' }
+    ];
+  }
+  const centerCell: ReelCell = center
+    ? { id: center.id, name: center.name, image: center.image }
+    : pickCell(items);
+  return [pickCell(items), centerCell, pickCell(items)];
 }
 
-function pickName(names: string[]) {
-  const index = Math.floor(cryptoRandomFloat() * names.length);
-  return names[index] ?? names[0] ?? '-';
+function pickCell(items: DrawItem[]): ReelCell {
+  const index = Math.floor(cryptoRandomFloat() * items.length);
+  const item = items[index] ?? items[0];
+  return { id: item?.id ?? null, name: item?.name ?? '-', image: item?.image };
 }
 
 function formatTime(value: string) {
@@ -1574,202 +1727,6 @@ function formatTime(value: string) {
 
 function modeLabel(mode: GameMode) {
   return modeOptions.find((option) => option.value === mode)?.label ?? mode;
-}
-
-function CountdownOverlay({ value }: { value: number }) {
-  const display = value > 0 ? value : 'GO!';
-  return (
-    <div className="countdown-overlay" aria-hidden="true">
-      <div className="countdown-number" key={String(value)}>
-        {display}
-      </div>
-    </div>
-  );
-}
-
-function QrModal({ url, onClose }: { url: string; onClose: () => void }) {
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(url)}`;
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
-
-  return (
-    <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true" aria-label="QR Code 分享">
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <button className="modal-close" type="button" onClick={onClose} aria-label="關閉">
-          <X size={20} />
-        </button>
-        <h2 className="modal-title">
-          <QrCode size={22} /> 掃描加入抽獎
-        </h2>
-        <div className="qr-frame">
-          <img src={qrSrc} alt="分享連結 QR Code" width={320} height={320} />
-        </div>
-        <p className="modal-hint">用手機相機掃描即可開啟此抽獎名單</p>
-        <code className="qr-url">{url}</code>
-      </div>
-    </div>
-  );
-}
-
-function StatsModal({
-  history,
-  items,
-  onClose,
-  colors
-}: {
-  history: DrawRecord[];
-  items: DrawItem[];
-  onClose: () => void;
-  colors: string[];
-}) {
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
-
-  const counts = useMemo(() => {
-    const map = new Map<string, number>();
-    history.forEach((rec) => map.set(rec.winnerName, (map.get(rec.winnerName) ?? 0) + 1));
-    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
-  }, [history]);
-
-  const total = history.length;
-  const max = counts[0]?.[1] ?? 1;
-  const distinct = items.filter((it) => it.name.trim() && it.weight > 0).length;
-  const distinctWinners = counts.length;
-
-  return (
-    <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true" aria-label="抽獎統計">
-      <div className="modal-card stats-card" onClick={(e) => e.stopPropagation()}>
-        <button className="modal-close" type="button" onClick={onClose} aria-label="關閉">
-          <X size={20} />
-        </button>
-        <h2 className="modal-title">
-          <BarChart3 size={22} /> 抽獎統計
-        </h2>
-        <div className="stats-summary">
-          <div>
-            <strong>{total}</strong>
-            <span>總抽獎次數</span>
-          </div>
-          <div>
-            <strong>{distinctWinners}</strong>
-            <span>不同得主</span>
-          </div>
-          <div>
-            <strong>{distinct}</strong>
-            <span>名單筆數</span>
-          </div>
-        </div>
-        <div className="stats-list">
-          {counts.length ? (
-            counts.map(([name, count], i) => (
-              <div className="stats-row" key={name}>
-                <span className="stats-name" title={name}>
-                  {name}
-                </span>
-                <div className="stats-bar-track">
-                  <div
-                    className="stats-bar-fill"
-                    style={{
-                      width: `${Math.max(8, (count / max) * 100)}%`,
-                      background: colors[i % colors.length]
-                    }}
-                  />
-                </div>
-                <span className="stats-count">{count}</span>
-              </div>
-            ))
-          ) : (
-            <p className="empty-state">尚無紀錄</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function pickMultipleWeighted(pool: DrawItem[], count: number): DrawItem[] {
-  const results: DrawItem[] = [];
-  let remaining = [...pool];
-  const target = Math.min(count, remaining.length);
-  for (let i = 0; i < target; i++) {
-    const picked = weightedPick(remaining);
-    if (!picked) break;
-    results.push(picked);
-    remaining = remaining.filter((item) => item.id !== picked.id);
-  }
-  return results;
-}
-
-function WinnerOverlay({ winners, onDismiss }: { winners: DrawItem[]; onDismiss: () => void }) {
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onDismiss();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onDismiss]);
-
-  const isMulti = winners.length > 1;
-  const burstParticles = useMemo(
-    () =>
-      Array.from({ length: 24 }, (_, i) => ({
-        id: i,
-        angle: (360 / 24) * i + Math.random() * 12,
-        distance: 220 + Math.random() * 180,
-        delay: Math.random() * 0.18,
-        size: 6 + Math.random() * 10
-      })),
-    []
-  );
-
-  return (
-    <div className="winner-overlay" onClick={onDismiss} role="dialog" aria-modal="true" aria-label="中獎結果">
-      <div className="winner-overlay-content" onClick={(e) => e.stopPropagation()}>
-        <div className="winner-overlay-icon">
-          <Trophy size={72} />
-        </div>
-        <p className="winner-overlay-label">{isMulti ? `本次得主 ${winners.length} 位` : '恭喜得主'}</p>
-        <div className={`winner-names-grid${isMulti ? ' is-multi' : ''}`}>
-          {winners.map((w, i) => (
-            <div className="winner-name-wrapper" key={w.id}>
-              {!isMulti && i === 0 && (
-                <div className="name-burst" aria-hidden="true">
-                  {burstParticles.map((p) => (
-                    <span
-                      key={p.id}
-                      className="name-burst-particle"
-                      style={
-                        {
-                          '--angle': `${p.angle}deg`,
-                          '--distance': `${p.distance}px`,
-                          '--delay': `${p.delay}s`,
-                          '--size': `${p.size}px`
-                        } as CSSProperties
-                      }
-                    />
-                  ))}
-                </div>
-              )}
-              <div className="winner-name-card" style={{ animationDelay: `${i * 0.12}s` } as CSSProperties}>
-                {w.name}
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="winner-overlay-hint">點擊任意處或按 Esc 關閉</p>
-      </div>
-    </div>
-  );
 }
 
 export default App;

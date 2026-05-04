@@ -1,8 +1,6 @@
-export type GameMode = 'marquee' | 'wheel' | 'slot' | 'gacha' | 'card';
+export type GameMode = 'marquee' | 'wheel' | 'slot' | 'gacha';
 
 export type ThemeName = 'neon' | 'temple' | 'casino' | 'future';
-
-export type WheelPalette = 'rainbow' | 'warm' | 'cool' | 'mono';
 
 export interface DrawItem {
   id: string;
@@ -10,6 +8,8 @@ export interface DrawItem {
   weight: number;
   drawn: boolean;
   createdAt: number;
+  image?: string;
+  excluded?: boolean;
 }
 
 export interface DrawRecord {
@@ -17,10 +17,12 @@ export interface DrawRecord {
   winnerId: string;
   winnerName: string;
   winnerWeight: number;
+  winnerImage?: string;
   mode: GameMode;
   theme: ThemeName;
   poolSize: number;
   at: string;
+  batchId?: string;
 }
 
 export interface AppSettings {
@@ -34,10 +36,6 @@ export interface AppSettings {
   hostMode: boolean;
   drawCount: number;
   countdown: number;
-  bgMusic: boolean;
-  voiceAnnounce: boolean;
-  wheelPalette: WheelPalette;
-  quickMode: boolean;
 }
 
 export interface PersistedState {

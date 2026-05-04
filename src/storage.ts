@@ -12,11 +12,7 @@ export const defaultSettings: AppSettings = {
   excitement: 7,
   hostMode: false,
   drawCount: 1,
-  countdown: 0,
-  bgMusic: false,
-  voiceAnnounce: false,
-  wheelPalette: 'rainbow',
-  quickMode: false
+  countdown: 0
 };
 
 export const defaultItems: DrawItem[] = [
@@ -46,6 +42,20 @@ export function loadState(): PersistedState {
   }
 }
 
-export function saveState(state: PersistedState) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+export function saveState(state: PersistedState): { ok: boolean; error?: string } {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    return { ok: true };
+  } catch (error) {
+    try {
+      const slim: PersistedState = {
+        ...state,
+        items: state.items.map((item) => ({ ...item, image: undefined }))
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(slim));
+      return { ok: false, error: '儲存空間已滿，已暫不保存圖片' };
+    } catch {
+      return { ok: false, error: (error as Error)?.message ?? '儲存失敗' };
+    }
+  }
 }

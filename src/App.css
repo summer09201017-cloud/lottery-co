@@ -354,13 +354,53 @@ select:focus {
 
 .roster-item {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) 64px 36px;
-  gap: 7px;
+  grid-template-columns: 34px 38px minmax(0, 1fr) 64px 26px 36px;
+  gap: 6px;
   align-items: center;
 }
 
 .roster-item.is-drawn {
   opacity: 0.62;
+}
+
+.roster-item.is-excluded {
+  filter: grayscale(0.6) opacity(0.55);
+}
+
+.thumb-button {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  overflow: hidden;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+}
+
+.thumb-button.has-image {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.thumb-button img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.icon-button.small {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+}
+
+.roster-panel.is-locked .roster-item input,
+.roster-panel.is-locked .quick-add input,
+.roster-panel.is-locked .import-box {
+  pointer-events: none;
 }
 
 .drawn-toggle {
@@ -483,6 +523,20 @@ select:focus {
   line-height: 1.15;
 }
 
+.marquee-tile .tile-image {
+  width: clamp(58px, 14vw, 96px);
+  height: clamp(58px, 14vw, 96px);
+  object-fit: cover;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+}
+
+.marquee-tile.is-winner {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-2) 35%, transparent);
+}
+
 .marquee-tile small {
   color: var(--muted);
 }
@@ -594,6 +648,32 @@ select:focus {
   overflow-wrap: anywhere;
   font-size: 1.1rem;
   line-height: 1.12;
+}
+
+.wheel-hub-image {
+  width: 56%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 50%;
+  margin-bottom: 6px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.32);
+}
+
+.slot-cell-image {
+  width: clamp(44px, 12vw, 84px);
+  height: clamp(44px, 12vw, 84px);
+  object-fit: cover;
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+
+.gacha-card-image {
+  width: clamp(60px, 18vw, 110px);
+  height: clamp(60px, 18vw, 110px);
+  object-fit: cover;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
 }
 
 .slot-machine {
@@ -851,10 +931,206 @@ select:focus {
   font-size: 0.86rem;
 }
 
+.winners-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.winners-row-item {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  padding: 12px 10px;
+  text-align: center;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, transparent), color-mix(in srgb, var(--accent-2) 22%, transparent));
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
+}
+
+.winners-row-item img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+}
+
+.winners-row-item strong {
+  overflow-wrap: anywhere;
+  font-size: 1.05rem;
+  line-height: 1.15;
+}
+
+.winners-row-mark {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  color: #06131f;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border-radius: 50%;
+}
+
+.countdown-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--bg) 36%, transparent), transparent 60%);
+}
+
+.countdown-overlay strong {
+  display: grid;
+  width: clamp(180px, 32vw, 320px);
+  aspect-ratio: 1;
+  place-items: center;
+  color: #06131f;
+  font-size: clamp(7rem, 18vw, 13rem);
+  font-weight: 900;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2), var(--accent-3));
+  border-radius: 50%;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+  animation: countdownPop 880ms ease-out;
+}
+
+@keyframes countdownPop {
+  from {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+  35% {
+    transform: scale(0.92);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.winner-banner {
+  position: fixed;
+  top: 28%;
+  left: 0;
+  right: 0;
+  z-index: 64;
+  height: clamp(80px, 12vh, 140px);
+  pointer-events: none;
+  overflow: hidden;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 28%, transparent), transparent);
+}
+
+.winner-banner-track {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  white-space: nowrap;
+  font-size: clamp(2.6rem, 6vw, 5rem);
+  font-weight: 900;
+  color: #fffbe6;
+  text-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.6),
+    0 0 28px color-mix(in srgb, var(--accent) 70%, transparent);
+  animation: winnerBannerSweep 1.6s cubic-bezier(0.18, 0.68, 0.18, 1.02);
+  animation-fill-mode: forwards;
+}
+
+.winner-banner-track span {
+  padding: 0 24px;
+}
+
+@keyframes winnerBannerSweep {
+  0% {
+    transform: translateX(110%);
+  }
+  18% {
+    transform: translateX(0);
+  }
+  82% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-110%);
+  }
+}
+
+.qr-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: rgba(2, 6, 14, 0.62);
+  backdrop-filter: blur(8px);
+  animation: qrFadeIn 180ms ease-out;
+}
+
+@keyframes qrFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.qr-modal-card {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  width: min(94vw, 380px);
+  padding: 28px 24px 22px;
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+}
+
+.qr-modal-card .qr-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+}
+
+.qr-canvas {
+  width: 240px;
+  height: 240px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.qr-canvas svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.qr-url {
+  margin: 0;
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: center;
+  word-break: break-all;
+}
+
 .confetti-layer {
   position: fixed;
   inset: 0;
-  z-index: 1100;
+  z-index: 60;
   overflow: hidden;
   pointer-events: none;
 }
@@ -896,6 +1172,39 @@ select:focus {
 .display-only .top-actions,
 .display-only .control-deck {
   display: none;
+}
+
+.obs-mode {
+  background: transparent !important;
+}
+
+.obs-mode .topbar,
+.obs-mode .panel,
+.obs-mode .mode-tabs,
+.obs-mode .control-deck,
+.obs-mode .pool-stats,
+.obs-mode .app-notice {
+  display: none !important;
+}
+
+.obs-mode .workspace {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+  min-height: 100vh;
+  max-width: 100%;
+}
+
+.obs-mode .stage-card {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  min-height: 100vh;
+  padding: clamp(12px, 2vw, 28px);
+}
+
+.obs-mode .stage-status strong {
+  font-size: clamp(3rem, 8vw, 8rem);
 }
 
 @keyframes slotPulse {
@@ -1039,502 +1348,6 @@ select:focus {
   .toggle-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-}
-
-/* ── 單抽卡牌模式 ─────────────────────────────────────── */
-
-.card-stage {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 24px;
-  min-height: 100%;
-  padding: 32px 16px;
-}
-
-.single-card {
-  position: relative;
-  width: clamp(220px, 36vw, 320px);
-  aspect-ratio: 5 / 7;
-  perspective: 1400px;
-}
-
-.single-card-inner {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  transform-style: preserve-3d;
-  transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.single-card.phase-idle .single-card-inner {
-  transform: rotateY(0) scale(1);
-}
-
-.single-card.phase-shaking .single-card-inner {
-  animation: cardShake 0.6s cubic-bezier(0.36, 0.07, 0.19, 0.97) infinite;
-  transform-origin: center;
-}
-
-.single-card.phase-flipping .single-card-inner,
-.single-card.phase-revealed .single-card-inner {
-  transform: rotateY(180deg) scale(1.05);
-}
-
-.single-card.phase-revealed .single-card-inner {
-  animation: cardGlow 1.6s ease-in-out infinite alternate;
-}
-
-@keyframes cardShake {
-  0%, 100% { transform: rotate(-2deg) translateX(-3px); }
-  25% { transform: rotate(2deg) translateX(3px); }
-  50% { transform: rotate(-1deg) translateX(-2px); }
-  75% { transform: rotate(1deg) translateX(2px); }
-}
-
-@keyframes cardGlow {
-  from { transform: rotateY(180deg) scale(1.05); filter: drop-shadow(0 0 24px var(--accent)); }
-  to { transform: rotateY(180deg) scale(1.08); filter: drop-shadow(0 0 48px var(--accent)); }
-}
-
-.single-card-face {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  text-align: center;
-  border: 2px solid var(--line);
-  border-radius: 16px;
-  backface-visibility: hidden;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 28px 60px rgba(0, 0, 0, 0.5);
-}
-
-.single-card-back {
-  background:
-    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.18), transparent 60%),
-    conic-gradient(from 0deg, var(--accent), var(--accent-2), var(--accent-3), var(--accent));
-  color: #06131f;
-}
-
-.single-card-pattern {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-}
-
-.single-card-back-text {
-  font-size: clamp(1.4rem, 4vw, 2.4rem);
-  font-weight: 900;
-  letter-spacing: 0.5em;
-  padding-left: 0.5em;
-  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.18);
-}
-
-.single-card-front {
-  background: linear-gradient(160deg, #fffbeb 0%, #fde68a 50%, #fcd34d 100%);
-  color: #1f2937;
-  transform: rotateY(180deg);
-  gap: 12px;
-}
-
-.single-card-front strong {
-  font-size: clamp(1.4rem, 3.6vw, 2.4rem);
-  font-weight: 900;
-  line-height: 1.1;
-  overflow-wrap: anywhere;
-}
-
-.single-card-tag {
-  padding: 4px 14px;
-  background: rgba(31, 41, 55, 0.85);
-  color: #fef3c7;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-}
-
-.card-stage-hint {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.95rem;
-  text-align: center;
-  min-height: 1.4em;
-}
-
-/* ── 視覺隱藏（無障礙） ────────────────────────────────── */
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.field-hint {
-  margin-left: 8px;
-  padding: 1px 6px;
-  font-style: normal;
-  font-size: 0.78rem;
-  font-weight: 800;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  border-radius: 4px;
-}
-
-/* ── 倒數計時 Overlay ──────────────────────────────────── */
-
-.countdown-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 950;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(6px);
-  pointer-events: none;
-}
-
-.countdown-number {
-  font-size: clamp(8rem, 22vw, 16rem);
-  font-weight: 900;
-  color: var(--accent);
-  text-shadow:
-    0 0 40px var(--accent),
-    0 0 100px color-mix(in srgb, var(--accent) 60%, transparent);
-  animation: countdownPulse 1s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes countdownPulse {
-  0% { transform: scale(0.2) rotate(-12deg); opacity: 0; }
-  40% { transform: scale(1.15) rotate(0); opacity: 1; }
-  100% { transform: scale(0.85); opacity: 0; }
-}
-
-/* ── 通用 Modal ───────────────────────────────────────── */
-
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 980;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgba(0, 0, 0, 0.78);
-  backdrop-filter: blur(8px);
-  animation: overlayIn 0.2s ease-out;
-}
-
-.modal-card {
-  position: relative;
-  max-width: min(92vw, 460px);
-  width: 100%;
-  max-height: 88vh;
-  overflow: auto;
-  background: var(--panel-strong);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 28px 24px 22px;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
-}
-
-.modal-card.stats-card {
-  max-width: min(92vw, 580px);
-}
-
-.modal-close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  color: var(--text);
-}
-
-.modal-close:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-.modal-title {
-  margin: 0 0 16px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 1.15rem;
-  color: var(--accent);
-}
-
-.modal-hint {
-  margin: 12px 0 8px;
-  color: var(--muted);
-  font-size: 0.85rem;
-  text-align: center;
-}
-
-.qr-frame {
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  margin: 8px auto 0;
-  background: white;
-  border-radius: 12px;
-  width: max-content;
-}
-
-.qr-frame img {
-  display: block;
-}
-
-.qr-url {
-  display: block;
-  margin-top: 10px;
-  padding: 8px 10px;
-  font-size: 0.78rem;
-  word-break: break-all;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 6px;
-  color: var(--muted);
-}
-
-/* ── 統計儀表板 ────────────────────────────────────────── */
-
-.stats-summary {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-bottom: 20px;
-}
-
-.stats-summary > div {
-  padding: 12px 10px;
-  text-align: center;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-
-.stats-summary strong {
-  display: block;
-  font-size: 1.6rem;
-  color: var(--accent);
-  font-weight: 900;
-}
-
-.stats-summary span {
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-
-.stats-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 50vh;
-  overflow: auto;
-}
-
-.stats-row {
-  display: grid;
-  grid-template-columns: minmax(72px, 24%) minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 4px;
-}
-
-.stats-name {
-  font-weight: 700;
-  font-size: 0.92rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stats-bar-track {
-  height: 14px;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 7px;
-  overflow: hidden;
-}
-
-.stats-bar-fill {
-  height: 100%;
-  border-radius: 7px;
-  transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.stats-count {
-  min-width: 28px;
-  text-align: right;
-  font-weight: 900;
-  color: var(--accent);
-}
-
-/* ── 中獎全螢幕展示 Overlay ─────────────────────────────── */
-
-.winner-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.88);
-  backdrop-filter: blur(10px);
-  cursor: pointer;
-  animation: overlayIn 0.28s ease-out;
-}
-
-@keyframes overlayIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.winner-overlay-content {
-  cursor: default;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1.4rem;
-  max-width: 90vw;
-  text-align: center;
-  padding: 3rem 4rem;
-}
-
-.winner-overlay-icon {
-  color: var(--accent);
-  filter: drop-shadow(0 0 24px var(--accent));
-  animation: winnerIconPop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes winnerIconPop {
-  from { transform: scale(0) rotate(-25deg); opacity: 0; }
-  to { transform: scale(1) rotate(0deg); opacity: 1; }
-}
-
-.winner-overlay-label {
-  margin: 0;
-  color: var(--muted);
-  font-size: 1.1rem;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-}
-
-.winner-names-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.6rem 2.4rem;
-  justify-content: center;
-  max-width: 80vw;
-}
-
-.winner-name-wrapper {
-  position: relative;
-  display: inline-block;
-}
-
-.name-burst {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  display: grid;
-  place-items: center;
-}
-
-.name-burst-particle {
-  position: absolute;
-  width: var(--size);
-  height: var(--size);
-  background: var(--accent);
-  border-radius: 50%;
-  box-shadow: 0 0 12px var(--accent);
-  opacity: 0;
-  animation: nameBurst 1.4s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
-  animation-delay: var(--delay);
-}
-
-@keyframes nameBurst {
-  0% { transform: rotate(var(--angle)) translate(0); opacity: 1; }
-  60% { opacity: 0.9; }
-  100% { transform: rotate(var(--angle)) translate(var(--distance)); opacity: 0; }
-}
-
-.winner-name-card {
-  font-size: clamp(2.8rem, 10vw, 6rem);
-  font-weight: 900;
-  line-height: 1.05;
-  color: var(--accent);
-  text-shadow:
-    0 0 30px color-mix(in srgb, var(--accent) 70%, transparent),
-    0 0 80px color-mix(in srgb, var(--accent) 40%, transparent);
-  letter-spacing: 0.05em;
-  animation: winnerNamePop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  overflow-wrap: anywhere;
-  max-width: 80vw;
-}
-
-.winner-names-grid.is-multi .winner-name-card {
-  font-size: clamp(1.8rem, 5vw, 3.2rem);
-}
-
-@keyframes winnerNamePop {
-  from { transform: scale(0.4) translateY(20px); opacity: 0; }
-  to { transform: scale(1) translateY(0); opacity: 1; }
-}
-
-.winner-overlay-hint {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.82rem;
-  opacity: 0.5;
-  margin-top: 0.5rem;
-}
-
-/* ── 抽出人數 Stepper ──────────────────────────────────── */
-
-.count-stepper {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 4px 6px;
-}
-
-.count-stepper .icon-button {
-  min-width: 32px;
-  min-height: 32px;
-  font-size: 1.1rem;
-  font-weight: 700;
-  padding: 0;
-  border-radius: 6px;
-}
-
-.count-display {
-  min-width: 2.4rem;
-  text-align: center;
-  font-size: 1.05rem;
-  font-weight: 900;
-  color: var(--accent);
 }
 
 @media (max-width: 520px) {
