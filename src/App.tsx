@@ -64,7 +64,7 @@ const themeOptions: Array<{ value: ThemeName; label: string }> = [
   { value: 'future', label: '科技大螢幕' }
 ];
 
-const drawCountOptions = [1, 3, 5, 10];
+const drawCountPresets = [1, 3, 5, 10];
 const countdownOptions = [
   { value: 0, label: '關閉' },
   { value: 3, label: '3 秒' },
@@ -123,7 +123,7 @@ function App() {
   const [wheelMs, setWheelMs] = useState(4200);
   const [slotReels, setSlotReels] = useState<ReelCell[][]>([]);
   const [gachaCards, setGachaCards] = useState<DrawItem[]>([]);
-  const [gachaRevealId, setGachaRevealId] = useState<string | null>(null);
+  const [gachaRevealIds, setGachaRevealIds] = useState<string[]>([]);
   const [gachaShuffleKey, setGachaShuffleKey] = useState(0);
   const [confettiKey, setConfettiKey] = useState(0);
   const [bannerKey, setBannerKey] = useState(0);
@@ -189,8 +189,8 @@ function App() {
 
   useEffect(() => {
     if (settings.mode !== 'gacha' || !stageItems.length || isDrawing || winners.length) return;
-    setGachaCards(buildGachaDeck(stageItems, null));
-    setGachaRevealId(null);
+    setGachaCards(buildGachaDeck(stageItems, []));
+    setGachaRevealIds([]);
   }, [settings.mode, isDrawing, stageNamesKey, winners.length]);
 
   useEffect(() => {
@@ -617,7 +617,7 @@ function App() {
     drawingRef.current = true;
     setIsDrawing(true);
     setWinners([]);
-    setGachaRevealId(null);
+    setGachaRevealIds([]);
     setRunPool(playable);
     playTone(sourceSettings.sound, 440, 0.08, 'triangle');
     vibrate(sourceSettings.vibration, 18);
@@ -647,7 +647,7 @@ function App() {
     }
 
     if (mode === 'gacha') {
-      animateGacha(playable, headWinner, sourceSettings, onAnimationDone);
+      animateGacha(playable, selected, sourceSettings, onAnimationDone);
       return;
     }
 
@@ -775,13 +775,14 @@ function App() {
     addTimeout(onDone, 1500 + sourceSettings.excitement * 150 + 2 * 720 + 420);
   }
 
-  function animateGacha(pool: DrawItem[], winningItem: DrawItem, sourceSettings: AppSettings, onDone: () => void) {
-    const deck = buildGachaDeck(pool, winningItem);
+  function animateGacha(pool: DrawItem[], winnersList: DrawItem[], sourceSettings: AppSettings, onDone: () => void) {
+    const deck = buildGachaDeck(pool, winnersList);
     const duration = 1500 + sourceSettings.excitement * 160;
     const ticks = Math.max(10, Math.round(duration / 130));
+    const revealStep = winnersList.length > 1 ? Math.max(220, 540 - winnersList.length * 18) : 0;
 
     setGachaCards(deck);
-    setGachaRevealId(null);
+    setGachaRevealIds([]);
 
     for (let index = 0; index < ticks; index += 1) {
       const progress = index / ticks;
@@ -792,13 +793,16 @@ function App() {
       }, index * 130 + Math.pow(progress, 2) * 360);
     }
 
-    addTimeout(() => {
-      setGachaRevealId(winningItem.id);
-      playTone(sourceSettings.sound, 880, 0.12, 'triangle');
-      vibrate(sourceSettings.vibration, [40, 25, 70]);
-    }, duration + 220);
+    winnersList.forEach((winner, idx) => {
+      addTimeout(() => {
+        setGachaRevealIds((current) => [...current, winner.id]);
+        playTone(sourceSettings.sound, 880 + idx * 24, 0.12, 'triangle');
+        vibrate(sourceSettings.vibration, [40, 25, 70]);
+      }, duration + 220 + idx * revealStep);
+    });
 
-    addTimeout(onDone, duration + 960);
+    const tail = duration + 220 + Math.max(0, winnersList.length - 1) * revealStep + 740;
+    addTimeout(onDone, tail);
   }
 
   const activeMode = modeOptions.find((mode) => mode.value === settings.mode) ?? modeOptions[0];
@@ -1063,7 +1067,7 @@ function App() {
                     updateSettings({ mode: value });
                     setWinners([]);
                     setRunPool([]);
-                    setGachaRevealId(null);
+                    setGachaRevealIds([]);
                   }}
                 >
                   <Icon size={18} />
@@ -1094,7 +1098,7 @@ function App() {
               wheelMs={wheelMs}
               slotReels={slotReels}
               gachaCards={gachaCards}
-              gachaRevealId={gachaRevealId}
+              gachaRevealIds={gachaRevealIds}
               gachaShuffleKey={gachaShuffleKey}
               winner={primaryWinner}
               winnerIds={winners.map((winner) => winner.id)}
@@ -1170,22 +1174,49 @@ function App() {
                 />
               </label>
 
-              <label className="field">
+              <div className="field">
                 <span>
                   <Users size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />
-                  一次抽幾名
+                  一次抽幾名（上限 {Math.max(playableItems.length, 1)}）
                 </span>
-                <select
+                <input
+                  className="weight-input"
+                  type="number"
+                  min={1}
+                  max={Math.max(playableItems.length, 1)}
                   value={settings.drawCount}
-                  onChange={(event) => updateSettings({ drawCount: Number(event.target.value) })}
-                >
-                  {drawCountOptions.map((value) => (
-                    <option value={value} key={value}>
-                      {value} 名
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  onChange={(event) => {
+                    const limit = Math.max(playableItems.length, 1);
+                    const next = Math.max(1, Math.min(limit, Number(event.target.value) || 1));
+                    updateSettings({ drawCount: next });
+                  }}
+                />
+                <div className="draw-count-presets">
+                  {drawCountPresets.map((value) => {
+                    const limit = Math.max(playableItems.length, 1);
+                    const target = Math.min(value, limit);
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        className={settings.drawCount === target ? 'is-active' : ''}
+                        onClick={() => updateSettings({ drawCount: target })}
+                      >
+                        {value}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    className={
+                      playableItems.length > 0 && settings.drawCount === playableItems.length ? 'is-active' : ''
+                    }
+                    onClick={() => updateSettings({ drawCount: Math.max(playableItems.length, 1) })}
+                  >
+                    全部
+                  </button>
+                </div>
+              </div>
 
               <label className="field">
                 <span>倒數</span>
@@ -1286,7 +1317,7 @@ function ModeStage({
   wheelMs,
   slotReels,
   gachaCards,
-  gachaRevealId,
+  gachaRevealIds,
   gachaShuffleKey,
   winner,
   winnerIds,
@@ -1299,7 +1330,7 @@ function ModeStage({
   wheelMs: number;
   slotReels: ReelCell[][];
   gachaCards: DrawItem[];
-  gachaRevealId: string | null;
+  gachaRevealIds: string[];
   gachaShuffleKey: number;
   winner: DrawItem | null;
   winnerIds: string[];
@@ -1331,8 +1362,8 @@ function ModeStage({
   if (mode === 'gacha') {
     return (
       <GachaStage
-        cards={gachaCards.length ? gachaCards : buildGachaDeck(items, null)}
-        revealId={gachaRevealId}
+        cards={gachaCards.length ? gachaCards : buildGachaDeck(items, [])}
+        revealIds={gachaRevealIds}
         winnerIds={winnerIds}
         isDrawing={isDrawing}
         shuffleKey={gachaShuffleKey}
@@ -1459,22 +1490,23 @@ function SlotStage({ reels, winnerId, isDrawing }: { reels: ReelCell[][]; winner
 
 function GachaStage({
   cards,
-  revealId,
+  revealIds,
   winnerIds,
   isDrawing,
   shuffleKey
 }: {
   cards: DrawItem[];
-  revealId: string | null;
+  revealIds: string[];
   winnerIds: string[];
   isDrawing: boolean;
   shuffleKey: number;
 }) {
   const winnerSet = new Set(winnerIds);
+  const revealSet = new Set(revealIds);
   return (
     <div className={`gacha-stage ${isDrawing ? 'is-drawing' : ''}`} data-shuffle={shuffleKey}>
       {cards.map((card, index) => {
-        const revealed = card.id === revealId || (!isDrawing && winnerSet.has(card.id));
+        const revealed = revealSet.has(card.id) || (!isDrawing && winnerSet.has(card.id));
         return (
           <div
             className={`gacha-card ${revealed ? 'is-revealed' : ''}`}
@@ -1676,11 +1708,15 @@ function decodeSharePayload(value: string) {
   return new TextDecoder().decode(bytes);
 }
 
-function buildGachaDeck(pool: DrawItem[], winningItem: DrawItem | null) {
+function buildGachaDeck(pool: DrawItem[], winnersList: DrawItem[]) {
   const available = pool.filter((item) => item.name.trim() && item.weight > 0);
-  const others = available.filter((item) => item.id !== winningItem?.id);
-  const deck = winningItem ? [winningItem, ...shuffleDrawItems(others)] : shuffleDrawItems(available);
-  return shuffleDrawItems(deck.slice(0, Math.min(12, deck.length)));
+  if (!available.length) return [];
+  const winnerIds = new Set(winnersList.map((winner) => winner.id));
+  const fillers = available.filter((item) => !winnerIds.has(item.id));
+  const targetSize = Math.min(available.length, Math.max(12, winnersList.length || 1));
+  const fillerCount = Math.max(0, targetSize - winnersList.length);
+  const deck = [...winnersList, ...shuffleDrawItems(fillers).slice(0, fillerCount)];
+  return shuffleDrawItems(deck);
 }
 
 function shuffleDrawItems(items: DrawItem[]) {
