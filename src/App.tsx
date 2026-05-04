@@ -61,7 +61,8 @@ const themeOptions: Array<{ value: ThemeName; label: string }> = [
   { value: 'neon', label: '霓虹電玩' },
   { value: 'temple', label: '廟口籤筒' },
   { value: 'casino', label: '賭場拉霸' },
-  { value: 'future', label: '科技大螢幕' }
+  { value: 'future', label: '科技大螢幕' },
+  { value: 'sakura', label: '櫻花飄雪' }
 ];
 
 const drawCountPresets = [1, 3, 5, 10];
@@ -834,6 +835,7 @@ function App() {
         .filter(Boolean)
         .join(' ')}
     >
+      {settings.theme === 'sakura' && <SakuraLayer />}
       <Confetti burstKey={confettiKey} />
       <WinnerBanner key={bannerKey} burstKey={bannerKey} name={bannerName} />
       {countdownRemaining !== null && <CountdownOverlay value={countdownRemaining} />}
@@ -1592,6 +1594,53 @@ function WinnerBanner({ burstKey, name }: { burstKey: number; name: string }) {
   );
 }
 
+function SakuraLayer() {
+  const petals = useMemo(() => {
+    const palette = ['#fbcfe8', '#f9a8d4', '#fda4af', '#fecdd3', '#f472b6'];
+    return Array.from({ length: 32 }, (_, index) => {
+      const drift = (Math.random() - 0.5) * 38;
+      return {
+        id: index,
+        left: Math.random() * 100,
+        size: 8 + Math.random() * 12,
+        duration: 9 + Math.random() * 9,
+        delay: -Math.random() * 18,
+        sway: 1.6 + Math.random() * 1.4,
+        rotateStart: Math.random() * 360,
+        rotateEnd: Math.random() * 720 + 360,
+        drift,
+        color: palette[index % palette.length],
+        opacity: 0.55 + Math.random() * 0.35
+      };
+    });
+  }, []);
+
+  return (
+    <div className="sakura-layer" aria-hidden="true">
+      {petals.map((petal) => (
+        <span
+          key={petal.id}
+          className="sakura-petal"
+          style={
+            {
+              left: `${petal.left}%`,
+              width: `${petal.size}px`,
+              height: `${petal.size}px`,
+              animationDuration: `${petal.duration}s, ${petal.sway}s`,
+              animationDelay: `${petal.delay}s, ${petal.delay}s`,
+              '--drift': `${petal.drift}vw`,
+              '--rstart': `${petal.rotateStart}deg`,
+              '--rend': `${petal.rotateEnd}deg`,
+              '--petal-color': petal.color,
+              '--petal-opacity': petal.opacity
+            } as CSSProperties
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
 function CountdownOverlay({ value }: { value: number }) {
   return (
     <div className="countdown-overlay" aria-live="polite" key={value}>
@@ -1677,7 +1726,13 @@ function isGameMode(value: string | null): value is GameMode {
 }
 
 function isThemeName(value: string | null): value is ThemeName {
-  return value === 'neon' || value === 'temple' || value === 'casino' || value === 'future';
+  return (
+    value === 'neon' ||
+    value === 'temple' ||
+    value === 'casino' ||
+    value === 'future' ||
+    value === 'sakura'
+  );
 }
 
 function createShareUrl(items: DrawItem[], settings: AppSettings) {

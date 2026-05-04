@@ -119,6 +119,100 @@ select:focus {
   --accent-3: #f97316;
 }
 
+.theme-sakura {
+  --bg: #fff5f7;
+  --bg-2: #ffe4e8;
+  --panel: rgba(255, 255, 255, 0.86);
+  --panel-strong: rgba(255, 240, 244, 0.94);
+  --text: #4a1d2f;
+  --muted: #94516a;
+  --line: rgba(244, 114, 182, 0.28);
+  --accent: #ec4899;
+  --accent-2: #f472b6;
+  --accent-3: #fbcfe8;
+  --shadow: 0 22px 70px rgba(244, 114, 182, 0.22);
+}
+
+.theme-sakura.app {
+  background:
+    radial-gradient(ellipse at 20% 0%, #ffe1ec 0%, transparent 55%),
+    radial-gradient(ellipse at 90% 30%, #fde2e7 0%, transparent 50%),
+    linear-gradient(180deg, #fff8fb 0%, #fff0f4 60%, #ffe4ec 100%);
+}
+
+.theme-sakura .topbar {
+  background: rgba(255, 248, 250, 0.78);
+  border-bottom-color: rgba(244, 114, 182, 0.22);
+}
+
+.theme-sakura input,
+.theme-sakura textarea,
+.theme-sakura select {
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--text);
+  border-color: rgba(244, 114, 182, 0.34);
+}
+
+.theme-sakura .icon-button,
+.theme-sakura .secondary-button,
+.theme-sakura .toggle,
+.theme-sakura .button-row button,
+.theme-sakura .mode-tabs button,
+.theme-sakura .draw-count-presets button,
+.theme-sakura .pool-stats span,
+.theme-sakura .history-item,
+.theme-sakura .marquee-tile,
+.theme-sakura .slot-cell {
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--text);
+  border-color: rgba(244, 114, 182, 0.28);
+}
+
+.theme-sakura .toggle.is-on,
+.theme-sakura .mode-tabs button.is-active,
+.theme-sakura .draw-count-presets button.is-active,
+.theme-sakura .icon-button.accent,
+.theme-sakura .install-button,
+.theme-sakura .start-button {
+  color: #5b1a32;
+}
+
+.theme-sakura .marquee-tile small,
+.theme-sakura .pool-stats span,
+.theme-sakura .history-item span,
+.theme-sakura .empty-state {
+  color: var(--muted);
+}
+
+.theme-sakura .share-link {
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--muted);
+}
+
+.theme-sakura .stage-status .eyebrow {
+  color: var(--accent);
+}
+
+.theme-sakura .slot-reel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 230, 240, 0.7));
+}
+
+.theme-sakura .slot-reel::before {
+  background: linear-gradient(180deg, rgba(255, 245, 248, 0.86), transparent);
+}
+
+.theme-sakura .slot-reel::after {
+  background: linear-gradient(0deg, rgba(255, 245, 248, 0.86), transparent);
+}
+
+.theme-sakura .wheel-disc {
+  border-color: rgba(244, 114, 182, 0.35);
+}
+
+.theme-sakura .wheel-hub {
+  border-color: rgba(255, 255, 255, 0.9);
+}
+
 .app {
   position: relative;
   min-height: 100vh;
@@ -1170,6 +1264,50 @@ select:focus {
   font-size: 0.78rem;
   text-align: center;
   word-break: break-all;
+}
+
+.sakura-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.sakura-petal {
+  position: absolute;
+  top: -12vh;
+  background: radial-gradient(ellipse 110% 90% at 35% 30%, #fff 0%, var(--petal-color, #f9a8d4) 55%, color-mix(in srgb, var(--petal-color, #f9a8d4) 70%, #be185d) 100%);
+  border-radius: 60% 14% 60% 14%;
+  opacity: var(--petal-opacity, 0.8);
+  filter: drop-shadow(0 2px 4px rgba(244, 114, 182, 0.35));
+  will-change: transform;
+  animation-name: sakuraFall, sakuraSway;
+  animation-timing-function: linear, ease-in-out;
+  animation-iteration-count: infinite, infinite;
+}
+
+@keyframes sakuraFall {
+  0% {
+    transform: translate3d(0, -10vh, 0) rotate(var(--rstart, 0deg));
+    opacity: 0;
+  }
+  6% {
+    opacity: var(--petal-opacity, 0.8);
+  }
+  100% {
+    transform: translate3d(var(--drift, 16vw), 112vh, 0) rotate(var(--rend, 540deg));
+    opacity: calc(var(--petal-opacity, 0.8) * 0.4);
+  }
+}
+
+@keyframes sakuraSway {
+  0%, 100% {
+    margin-left: 0;
+  }
+  50% {
+    margin-left: 22px;
+  }
 }
 
 .confetti-layer {

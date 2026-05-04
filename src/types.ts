@@ -1,6 +1,6 @@
 export type GameMode = 'marquee' | 'wheel' | 'slot' | 'gacha';
 
-export type ThemeName = 'neon' | 'temple' | 'casino' | 'future';
+export type ThemeName = 'neon' | 'temple' | 'casino' | 'future' | 'sakura';
 
 export interface DrawItem {
   id: string;
