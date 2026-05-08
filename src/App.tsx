@@ -12,6 +12,7 @@ import {
   ListPlus,
   Maximize2,
   MonitorUp,
+  MousePointerClick,
   PackageOpen,
   Play,
   Plus,
@@ -126,6 +127,9 @@ function App() {
   const [gachaCards, setGachaCards] = useState<DrawItem[]>([]);
   const [gachaRevealIds, setGachaRevealIds] = useState<string[]>([]);
   const [gachaShuffleKey, setGachaShuffleKey] = useState(0);
+  const [pendingWinners, setPendingWinners] = useState<DrawItem[]>([]);
+  const [allWinnersForDraw, setAllWinnersForDraw] = useState<DrawItem[]>([]);
+  const [revealedAssignments, setRevealedAssignments] = useState<Record<string, DrawItem>>({});
   const [confettiKey, setConfettiKey] = useState(0);
   const [bannerKey, setBannerKey] = useState(0);
   const [bannerName, setBannerName] = useState('');
@@ -151,6 +155,7 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const itemImageInputRef = useRef<HTMLInputElement | null>(null);
   const itemImageTargetRef = useRef<string | null>(null);
+  const drawContextRef = useRef<{ mode: GameMode; poolSize: number; sourceSettings: AppSettings } | null>(null);
 
   const cleanItems = useMemo(() => items.filter((item) => item.name.trim() && item.weight > 0), [items]);
   const playableItems = useMemo(() => getPlayableItems(items, settings.skipDrawn), [items, settings.skipDrawn]);
@@ -619,6 +624,10 @@ function App() {
     setIsDrawing(true);
     setWinners([]);
     setGachaRevealIds([]);
+    setPendingWinners([]);
+    setRevealedAssignments({});
+    setAllWinnersForDraw([]);
+    drawContextRef.current = null;
     setRunPool(playable);
     playTone(sourceSettings.sound, 440, 0.08, 'triangle');
     vibrate(sourceSettings.vibration, 18);
@@ -648,6 +657,20 @@ function App() {
     }
 
     if (mode === 'gacha') {
+      const useClickToFlip = sourceSettings.clickToFlip && !isDisplayOnly;
+      if (useClickToFlip) {
+        drawContextRef.current = { mode, poolSize: playable.length, sourceSettings };
+        setAllWinnersForDraw(selected);
+        setPendingWinners(selected);
+        setRevealedAssignments({});
+        const shuffled = shuffleDrawItems(playable);
+        const deckSize = Math.min(Math.max(selected.length, 12), shuffled.length);
+        setGachaCards(shuffled.slice(0, deckSize));
+        setGachaRevealIds([]);
+        playTone(sourceSettings.sound, 480, 0.08, 'triangle');
+        vibrate(sourceSettings.vibration, 18);
+        return;
+      }
       animateGacha(playable, selected, sourceSettings, onAnimationDone);
       return;
     }
@@ -806,7 +829,31 @@ function App() {
     addTimeout(onDone, tail);
   }
 
+  function handleGachaCardTap(cardId: string) {
+    if (revealedAssignments[cardId]) return;
+    if (!pendingWinners.length) return;
+
+    const next = pendingWinners[0];
+    const remaining = pendingWinners.slice(1);
+    setRevealedAssignments((prev) => ({ ...prev, [cardId]: next }));
+    setPendingWinners(remaining);
+    setGachaRevealIds((prev) => (prev.includes(cardId) ? prev : [...prev, cardId]));
+    playTone(settings.sound, 880, 0.12, 'triangle');
+    vibrate(settings.vibration, [40, 25, 70]);
+
+    if (remaining.length === 0) {
+      const ctx = drawContextRef.current;
+      addTimeout(() => {
+        if (!ctx) return;
+        finishDraw(allWinnersForDraw, ctx.mode, ctx.poolSize, ctx.sourceSettings);
+        drawContextRef.current = null;
+      }, 900);
+    }
+  }
+
   const activeMode = modeOptions.find((mode) => mode.value === settings.mode) ?? modeOptions[0];
+  const gachaTapHandler =
+    settings.clickToFlip && pendingWinners.length > 0 ? handleGachaCardTap : undefined;
   const headerLabel = countdownRemaining !== null
     ? `倒數 ${countdownRemaining}`
     : isDrawing
@@ -1070,6 +1117,10 @@ function App() {
                     setWinners([]);
                     setRunPool([]);
                     setGachaRevealIds([]);
+                    setPendingWinners([]);
+                    setRevealedAssignments({});
+                    setAllWinnersForDraw([]);
+                    drawContextRef.current = null;
                   }}
                 >
                   <Icon size={18} />
@@ -1102,9 +1153,12 @@ function App() {
               gachaCards={gachaCards}
               gachaRevealIds={gachaRevealIds}
               gachaShuffleKey={gachaShuffleKey}
+              gachaRevealedMap={revealedAssignments}
+              gachaPendingCount={pendingWinners.length}
               winner={primaryWinner}
               winnerIds={winners.map((winner) => winner.id)}
               isDrawing={isDrawing}
+              onGachaCardTap={gachaTapHandler}
             />
 
             {winners.length > 1 && !isDrawing && (
@@ -1264,6 +1318,15 @@ function App() {
                   <MonitorUp size={17} />
                   主持人模式
                 </button>
+                <button
+                  className={`toggle ${settings.clickToFlip ? 'is-on' : ''}`}
+                  type="button"
+                  title="開啟後：抽卡盲盒會等你親手點卡才翻面"
+                  onClick={() => updateSettings({ clickToFlip: !settings.clickToFlip })}
+                >
+                  <MousePointerClick size={17} />
+                  點擊翻牌
+                </button>
               </div>
             </section>
 
@@ -1321,9 +1384,12 @@ function ModeStage({
   gachaCards,
   gachaRevealIds,
   gachaShuffleKey,
+  gachaRevealedMap,
+  gachaPendingCount,
   winner,
   winnerIds,
-  isDrawing
+  isDrawing,
+  onGachaCardTap
 }: {
   mode: GameMode;
   items: DrawItem[];
@@ -1334,9 +1400,12 @@ function ModeStage({
   gachaCards: DrawItem[];
   gachaRevealIds: string[];
   gachaShuffleKey: number;
+  gachaRevealedMap: Record<string, DrawItem>;
+  gachaPendingCount: number;
   winner: DrawItem | null;
   winnerIds: string[];
   isDrawing: boolean;
+  onGachaCardTap?: (cardId: string) => void;
 }) {
   if (!items.length) {
     return (
@@ -1366,9 +1435,12 @@ function ModeStage({
       <GachaStage
         cards={gachaCards.length ? gachaCards : buildGachaDeck(items, [])}
         revealIds={gachaRevealIds}
+        revealedMap={gachaRevealedMap}
+        pendingCount={gachaPendingCount}
         winnerIds={winnerIds}
         isDrawing={isDrawing}
         shuffleKey={gachaShuffleKey}
+        onCardTap={onGachaCardTap}
       />
     );
   }
@@ -1493,26 +1565,53 @@ function SlotStage({ reels, winnerId, isDrawing }: { reels: ReelCell[][]; winner
 function GachaStage({
   cards,
   revealIds,
+  revealedMap,
+  pendingCount,
   winnerIds,
   isDrawing,
-  shuffleKey
+  shuffleKey,
+  onCardTap
 }: {
   cards: DrawItem[];
   revealIds: string[];
+  revealedMap: Record<string, DrawItem>;
+  pendingCount: number;
   winnerIds: string[];
   isDrawing: boolean;
   shuffleKey: number;
+  onCardTap?: (cardId: string) => void;
 }) {
   const winnerSet = new Set(winnerIds);
   const revealSet = new Set(revealIds);
+  const clickMode = !!onCardTap;
   return (
-    <div className={`gacha-stage ${isDrawing ? 'is-drawing' : ''}`} data-shuffle={shuffleKey}>
+    <div
+      className={`gacha-stage ${isDrawing ? 'is-drawing' : ''} ${clickMode ? 'is-click-mode' : ''}`}
+      data-shuffle={shuffleKey}
+    >
       {cards.map((card, index) => {
-        const revealed = revealSet.has(card.id) || (!isDrawing && winnerSet.has(card.id));
+        const revealedItem = revealedMap[card.id];
+        const revealed = !!revealedItem || revealSet.has(card.id) || (!isDrawing && winnerSet.has(card.id));
+        const front = revealedItem ?? card;
+        const interactive = clickMode && !revealedItem && pendingCount > 0;
         return (
           <div
-            className={`gacha-card ${revealed ? 'is-revealed' : ''}`}
+            className={`gacha-card ${revealed ? 'is-revealed' : ''} ${interactive ? 'is-interactive' : ''}`}
             key={card.id}
+            onClick={interactive ? () => onCardTap?.(card.id) : undefined}
+            role={interactive ? 'button' : undefined}
+            tabIndex={interactive ? 0 : undefined}
+            aria-label={interactive ? '點擊翻牌' : undefined}
+            onKeyDown={
+              interactive
+                ? (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onCardTap?.(card.id);
+                    }
+                  }
+                : undefined
+            }
             style={{ '--delay': `${index * 0.045}s` } as CSSProperties}
           >
             <div className="gacha-card-inner">
@@ -1521,13 +1620,13 @@ function GachaStage({
                 <strong>?</strong>
               </div>
               <div className="gacha-face gacha-front">
-                {card.image ? (
-                  <img className="gacha-card-image" src={card.image} alt={card.name} />
+                {front.image ? (
+                  <img className="gacha-card-image" src={front.image} alt={front.name} />
                 ) : (
                   <Trophy size={28} />
                 )}
-                <strong>{card.name}</strong>
-                <small>{card.weight}x</small>
+                <strong>{front.name}</strong>
+                <small>{front.weight}x</small>
               </div>
             </div>
           </div>

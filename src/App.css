@@ -1422,6 +1422,41 @@ select:focus {
   }
 }
 
+/* ── 點擊翻牌 ─────────────────────────────────────── */
+
+.gacha-stage.is-click-mode .gacha-card {
+  cursor: default;
+}
+
+.gacha-stage.is-click-mode .gacha-card.is-interactive {
+  cursor: pointer;
+}
+
+.gacha-stage.is-click-mode.is-drawing .gacha-card:not(.is-revealed) .gacha-card-inner {
+  animation: gachaInvite 2.2s ease-in-out infinite;
+  animation-delay: var(--delay);
+}
+
+.gacha-stage.is-click-mode .gacha-card.is-interactive:hover .gacha-card-inner,
+.gacha-stage.is-click-mode .gacha-card.is-interactive:focus-visible .gacha-card-inner {
+  transform: translateY(-8px) scale(1.06);
+  animation: none;
+  filter: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.4));
+}
+
+.gacha-stage.is-click-mode .gacha-card.is-interactive:active .gacha-card-inner {
+  transform: translateY(-4px) scale(1.02);
+}
+
+@keyframes gachaInvite {
+  0%, 100% {
+    transform: translateY(0) rotate(-0.5deg);
+  }
+  50% {
+    transform: translateY(-4px) rotate(0.5deg);
+  }
+}
+
 @media (max-width: 1180px) {
   .workspace {
     grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);

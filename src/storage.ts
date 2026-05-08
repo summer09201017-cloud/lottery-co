@@ -12,7 +12,8 @@ export const defaultSettings: AppSettings = {
   excitement: 7,
   hostMode: false,
   drawCount: 1,
-  countdown: 0
+  countdown: 0,
+  clickToFlip: true
 };
 
 export const defaultItems: DrawItem[] = [

@@ -36,6 +36,7 @@ export interface AppSettings {
   hostMode: boolean;
   drawCount: number;
   countdown: number;
+  clickToFlip: boolean;
 }
 
 export interface PersistedState {
